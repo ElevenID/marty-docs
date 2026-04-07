@@ -1,0 +1,35 @@
+---
+title: ElevenID Documentation
+description: Developer documentation for ElevenID — verifiable identity infrastructure for issuing and verifying credentials, Open Badges, and identity documents.
+template: splash
+hero:
+  tagline: Verifiable identity infrastructure for credentials, Open Badges, and identity documents.
+  actions:
+    - text: Get Started
+      link: /getting-started/introduction/
+      icon: right-arrow
+    - text: CLI Reference
+      link: /cli/overview/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Quick Start" icon="rocket">
+    Install the Marty CLI, authenticate, and run your first credential verification in minutes.
+    [Get started →](/getting-started/quickstart/)
+  </Card>
+  <Card title="CLI Reference" icon="seti:shell">
+    Complete reference for all Marty CLI commands — verify, issue, trust, compliance, and more.
+    [View CLI docs →](/cli/overview/)
+  </Card>
+  <Card title="API Documentation" icon="open-book">
+    REST API reference for credential verification, issuance, and trust registry operations.
+    [View API docs →](/api/overview/)
+  </Card>
+  <Card title="Concepts" icon="puzzle">
+    Understand trust profiles, credential templates, presentation policies, and the Marty Identity Protocol.
+    [Learn concepts →](/concepts/trust-profiles/)
+  </Card>
+</CardGrid>
