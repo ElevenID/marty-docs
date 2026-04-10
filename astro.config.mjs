@@ -5,6 +5,7 @@ import starlight from '@astrojs/starlight';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://docs.elevenidllc.com',
+	trailingSlash: 'always',
 	integrations: [
 		starlight({
 			title: 'ElevenID Docs',
