@@ -1,6 +1,7 @@
 {
   "name": "@elevenid/marty-docs",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "version": "0.1.0",
   "description": "ElevenID developer documentation — guides, CLI reference, and API docs",
