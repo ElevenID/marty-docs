@@ -30,7 +30,7 @@ export default defineConfig({
 				},
 				{
 					label: 'CLI Reference',
-					autogenerate: { directory: 'cli' },
+					items: [{ autogenerate: { directory: 'cli' } }],
 				},
 				{
 					label: 'API',
@@ -43,11 +43,11 @@ export default defineConfig({
 				},
 				{
 					label: 'Concepts',
-					autogenerate: { directory: 'concepts' },
+					items: [{ autogenerate: { directory: 'concepts' } }],
 				},
 				{
 					label: 'Guides',
-					autogenerate: { directory: 'guides' },
+					items: [{ autogenerate: { directory: 'guides' } }],
 				},
 			],
 		}),
