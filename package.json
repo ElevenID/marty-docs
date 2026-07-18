@@ -1,6 +1,9 @@
 {
   "name": "@elevenid/marty-docs",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "license": "AGPL-3.0-only",
   "type": "module",
   "version": "0.1.0",
