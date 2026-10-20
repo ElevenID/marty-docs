@@ -1,49 +1,32 @@
-# Starlight Starter Kit: Basics
+# ElevenID documentation
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+This repository builds the static developer documentation at
+[docs.elevenidllc.com](https://docs.elevenidllc.com) with Astro and Starlight.
+Content lives in `src/content/docs/`; navigation, site identity and the active
+`src/assets/logo.svg` are configured in `astro.config.mjs`. Files in `public/`
+are copied as static assets.
 
-```
-npm create astro@latest -- --template starlight
-```
+Use Node 24 or newer and install the reviewed lockfile:
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```sh
+npm ci
+npm run dev
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+Build and check dependencies before review:
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+```sh
+npm run build
+npm audit --audit-level=moderate
+```
 
-Static assets, like favicons, can be placed in the `public/` directory.
+`npm run preview` serves the generated `dist/` output locally. `npm run astro`
+forwards Astro CLI commands. Keep generated `dist/`, `.astro/` and dependencies
+out of Git; the existing Pages workflow owns publication.
 
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+The build temporarily overrides `postcss-nested` to 7.0.2 because Expressive
+Code's 6.x dependency retains a vulnerable selector-parser. Version 7 supports
+this project's Node 24 requirement and resolves the patched parser. Remove the
+override when Starlight/Expressive Code select a maintained safe version on
+their own. Recheck the production build, nested-selector output and audit when
+changing it; keep the direct Starlight dependency on its declared release line.
