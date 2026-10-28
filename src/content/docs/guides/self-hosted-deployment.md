@@ -1,20 +1,56 @@
 ---
 title: Self-Hosted Deployment
-description: Deploy ElevenID in your own environment with Docker or Kubernetes while keeping secrets and licensing supportable.
+description: Marty installer status, customer operating responsibilities, and self-hosted design reference.
 sidebar:
   order: 2
 ---
 
-ElevenID self-hosting is designed around a simple contract that works across Docker Compose, Kubernetes, and regulated customer environments:
+## Start with the release-specific installer guidance
+
+Marty deployments are customer-operated. Your organization or selected
+integrator owns installation, monitoring, backup, recovery, and production
+operation. The current commercial direction excludes managed hosting,
+guaranteed support response, an uptime SLA, or 24/7 operations.
+
+Use the active service-plane documentation for an actual installation:
+
+- [Installer bootstrap, requirements, and admission](https://github.com/ElevenID/marty-ui/blob/main/docs/installer-bootstrap.md)
+- [Exact-release disposable qualification](https://github.com/ElevenID/marty-ui/blob/main/docs/selfhost-disposable-qualification-runbook.md)
+- [Console-free source composition and its qualification boundary](https://github.com/ElevenID/marty-ui/blob/main/docs/SELFHOST_API_ONLY.md)
+
+As of the 2026-10-28 reconciliation, the bootstrap targets Linux amd64 with a
+local Docker Engine and Compose. Rootless Docker, user namespace remapping,
+remote Docker contexts, macOS, Windows, and other architectures are not supported
+by that bootstrap. A Kubernetes design example does not establish a supported
+Kubernetes distribution. The API-only source overlay is not yet a qualified
+published headless installer package.
+
+Normal release selection requires signed admission. Candidate-test mode remains
+explicitly unqualified. The current operator keeps `installation_ready: false`
+until its trust-onboarding and installed-journey gate is complete, even when
+read-only validation checks pass. Keep evaluation synthetic until the selected
+workflow, customer operating controls, and required security/privacy approvals
+are evidenced. See the linked guides for the current release's status.
+
+## Reference design patterns
+
+The remaining sections preserve earlier deployment-design guidance. They are
+not a current platform support matrix or a substitute for the exact release's
+manifests and runbook. Verify variable names, secret delivery, licensing,
+storage, and KMS behavior against that release before using a pattern. New
+hardening designs require implementation and qualification before they become
+supported behavior.
+
+The reference design explores these goals:
 
 - Non-secret configuration stays in environment variables or config files.
-- Secrets are supported as either direct environment variables or file-backed values.
+- Secret inputs have explicit delivery and validation contracts for each component.
 - Licensed deployments should keep license material out of `.env` and treat it like any other secret.
 - The product should integrate with the secret manager your environment already uses instead of forcing a single vendor-specific backend.
 
-## What customers typically expect
+## Packaging design goals
 
-When customers buy a self-hosted Docker product, the standard expectation is:
+The earlier packaging design proposed:
 
 - The vendor ships one or more container images.
 - The vendor provides a reference `compose.yaml`, Helm chart, or Kubernetes manifests.
@@ -22,11 +58,13 @@ When customers buy a self-hosted Docker product, the standard expectation is:
 - Secrets are injected from files, platform secrets, or external secret managers.
 - Licensing works offline or semi-offline through a key or signed license file.
 
-That is the least surprising deployment model for enterprise buyers and the easiest one to support over time.
+These are design goals to reconcile with the selected release, not commitments
+that every packaging format or offline licensing path is available.
 
-## The recommended secret contract
+## Earlier secret-input proposal
 
-For every secret, support both forms:
+The earlier proposal used two input forms. Verify which are implemented and
+appropriate for each secret in the selected release:
 
 - `VAR`
 - `VAR_FILE`
@@ -46,7 +84,8 @@ The runtime behavior should be:
 4. If neither is set for a required secret, fail with a clear startup error.
 5. If the supplied value is blank or still matches a shipped placeholder such as `change-me-...`, fail before the service starts.
 
-This model works the same way whether the deployment source is Docker Compose secrets, a mounted Kubernetes Secret, or a file written by a secret-manager agent.
+The intended interface allowed file-backed values from different secret-delivery
+systems. Each runtime adapter still needs its own implementation and tests.
 
 ## Keep `.env` non-secret
 
@@ -78,7 +117,8 @@ For Docker Compose, the most typical industry pattern is:
 3. Pass `*_FILE` variables to the container.
 4. Let the container entrypoint or bootstrap logic export the final runtime environment variables before the application starts.
 
-Example:
+Illustrative design example only. The image, paths, and tier label below are not
+a verified current release selection or approved commercial offer:
 
 ```yaml
 services:
@@ -113,13 +153,24 @@ secrets:
     file: /opt/elevenid/secrets/license_public_key
 ```
 
-This is effectively the contract used by the current ElevenID self-host reference stack.
+Compare this pattern with the exact release's Compose files and secret contract;
+do not use it as an installer manifest.
 
-For the current reference stack, the host-published HTTP surfaces should stay loopback-only by default. If you are fronting the deployment with Cloudflare Tunnel, a reverse proxy, or another edge, do not also expose the admin and gateway ports broadly on the host unless you have explicit firewall and TLS controls in place.
+In this reference design, host-published HTTP surfaces stay loopback-only by
+default. If you are fronting a deployment with Cloudflare Tunnel, a reverse
+proxy, or another edge, do not also expose the admin and gateway ports broadly
+on the host unless you have explicit firewall and TLS controls in place.
 
-The current reference stack also keeps the runtime application token separate from vault root and unseal material. Application containers should only see the least-privilege token they need for signing or trust operations.
+The security goal is to keep runtime application tokens separate from vault root
+and unseal material. Application containers should only receive the scoped
+authority they need for signing or trust operations. Verify custody and recovery
+in the selected deployment rather than inferring them from this example.
 
-For the current self-host reference deployment, that vault token should come from an operator-managed external Vault or OpenBao instance. Do not rely on an in-cluster bootstrap vault persisting root or unseal material alongside the application runtime.
+The earlier design assumed an operator-managed external Vault or OpenBao
+instance. Current installer provisioning has its own OpenBao lifecycle; follow
+the release's documented bootstrap, key-custody, and recovery model. An external
+KMS option and a proposed bootstrap-root retirement design each need their own
+implementation and acceptance evidence.
 
 ## Kubernetes pattern
 
@@ -159,7 +210,10 @@ Recommended behavior:
 - keep license material out of `.env`
 - validate the license early and fail with a clear operator-facing error when the license is missing or invalid
 
-The current ElevenID self-host reference stack validates the signed license before migrations and service startup, and defaults to requiring `plan_tier=system` for the licensed deployment.
+The earlier reference configuration used a signed-license startup check and
+`plan_tier=system`. Verify the current runtime mapping and failure behavior for
+the selected release. That label does not define a current product tier, price,
+commercial entitlement, or production authorization.
 
 If the installation also seeds an initial organization administrator, require that administrator identity to be explicitly customer-controlled before first startup. Do not rely on a shipped personal email default in a customer deployment.
 
@@ -193,9 +247,9 @@ For agent-safe operation:
 
 Compose secrets reduce accidental Git exposure, but they do not create a separate trust boundary from tools that can already read the host files.
 
-## Current ElevenID self-host reference deployment
+## Earlier external-KMS reference design
 
-The current ElevenID self-host reference deployment uses:
+The earlier reference design described:
 
 - a dedicated production Compose stack
 - file-backed secrets mounted through Compose
@@ -203,11 +257,18 @@ The current ElevenID self-host reference deployment uses:
 - runtime secret loaders that export the final process environment
 - persistent storage for database, cache, and applicant data
 
-This reference deployment is appropriate for same-host and small-cluster installs. Larger enterprise deployments should use the same runtime secret contract with Kubernetes-native secret delivery and license management.
+This list does not qualify same-host, small-cluster, or Kubernetes operation.
+Use the release-specific platform matrix and independently exercise the selected
+installation, workload, restart, backup/restore, and cleanup behavior.
 
-The current reference deployment expects vault bootstrap and recovery to stay outside the application stack. For regulated production, keep initialization, unseal, and root material in your external vault operating model and hand the application only a least-privilege runtime token.
+This external-KMS design keeps vault bootstrap and recovery outside the
+application stack. Its assumptions must not silently replace the current
+installer's provisioning contract. Record the actual customer custody and
+recovery responsibilities for the chosen deployment before production use.
 
-The reference gateway stack should also ship with a non-zero default rate limit. Treat rate limiting as enabled by default and only disable it when equivalent controls already exist at the edge.
+Verify rate limiting in the selected gateway and edge configuration. A reference
+design recommendation does not prove that limits are enabled in an installed
+release.
 
 ## Next steps
 

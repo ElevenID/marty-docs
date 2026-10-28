@@ -1,9 +1,9 @@
 ---
 title: ElevenID Documentation
-description: Developer documentation for ElevenID — verifiable identity infrastructure for issuing and verifying credentials, Open Badges, and identity documents.
+description: Developer documentation for Marty, ElevenID's customer-operated credential, document-verification, and trust-policy infrastructure.
 template: splash
 hero:
-  tagline: Verifiable identity infrastructure for credentials, Open Badges, and identity documents.
+  tagline: Identity and document-verification infrastructure your organization operates.
   actions:
     - text: Get Started
       link: /getting-started/introduction/
@@ -15,13 +15,17 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
+Marty brings credential, document-verification, and Travel Trust workflows into
+one product. Use the [introduction](/getting-started/introduction/) to choose a
+bounded workflow and understand its operating and evidence requirements.
+
 <CardGrid stagger>
   <Card title="Quick Start" icon="rocket">
-    Install the Marty CLI, authenticate, and run your first credential verification in minutes.
+    Review prerequisites, install the Marty CLI, and exercise a synthetic workflow in your selected environment.
     [Get started →](/getting-started/quickstart/)
   </Card>
   <Card title="CLI Reference" icon="seti:shell">
-    Complete reference for all Marty CLI commands — verify, issue, trust, compliance, and more.
+    Command reference for verification, issuance, trust, and policy operations.
     [View CLI docs →](/cli/overview/)
   </Card>
   <Card title="API Documentation" icon="open-book">
@@ -33,7 +37,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     [Learn concepts →](/concepts/trust-profiles/)
   </Card>
   <Card title="Self-Hosting" icon="server-stack">
-    Deploy ElevenID in your own environment with Docker or Kubernetes using a supportable secrets and licensing model.
+    Review Linux amd64 installer requirements, release qualification, and customer operating responsibilities.
     [Read the guide →](/guides/self-hosted-deployment/)
   </Card>
 </CardGrid>
