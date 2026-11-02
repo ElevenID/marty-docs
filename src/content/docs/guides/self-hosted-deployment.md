@@ -18,12 +18,17 @@ Use the active service-plane documentation for an actual installation:
 - [Exact-release disposable qualification](https://github.com/ElevenID/marty-ui/blob/main/docs/selfhost-disposable-qualification-runbook.md)
 - [Console-free source composition and its qualification boundary](https://github.com/ElevenID/marty-ui/blob/main/docs/SELFHOST_API_ONLY.md)
 
-As of the 2026-10-28 reconciliation, the bootstrap targets Linux amd64 with a
-local Docker Engine and Compose. Rootless Docker, user namespace remapping,
-remote Docker contexts, macOS, Windows, and other architectures are not supported
-by that bootstrap. A Kubernetes design example does not establish a supported
-Kubernetes distribution. The API-only source overlay is not yet a qualified
-published headless installer package.
+The current installer source targets Linux amd64 and requires a nonroot process
+with no-new-privileges, a preinstalled Docker client and Compose plugin, and an
+already-running, user-owned rootless Docker daemon. It refuses rootful daemons,
+user namespace remapping, explicit Docker context overrides, foreign sockets,
+macOS, Windows, and other architectures. Select a release that includes this
+boundary; historical nightlies may still use the older rootful path. Follow
+that exact release's bootstrap guide.
+
+A Kubernetes design example does not establish a supported Kubernetes
+distribution. The API-only source overlay is not yet a qualified published
+headless installer package.
 
 Normal release selection requires signed admission. Candidate-test mode remains
 explicitly unqualified. The current operator keeps `installation_ready: false`
