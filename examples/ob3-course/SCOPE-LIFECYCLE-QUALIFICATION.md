@@ -48,16 +48,18 @@ Before and after **each** R/V verification, the runner reads inventory using onl
 
 The probe accepts one deliberately narrow saved policy. Prepare and review it using the normal operator workflow before this runner; the runner does not create or modify it.
 
-- Owned by the original course organization, status `active`, same OB3 baseline compliance ID as the course template (`10000000-0000-0000-0000-000000000003`), and accepted type exactly `OpenBadgeCredential`.
+- Owned by the original course organization, status `active`, absent/null `compliance_profile_id`, and accepted type exactly `OpenBadgeCredential`.
 - Exactly one required `VC_JWT` requirement for the course template. The top-level and requirement `trust_profile_id` must be the same explicit UUID.
 - Exactly two requested claims, `learner_id` and `achievement`. Each must be required, nonselective, not derived, with no predicate and one `equals` constraint containing its **complete exact value from the original journal**. An achievement-ID-only constraint is insufficient.
 - `holder_binding.required: false`. This exercises credential verification; it does not establish a fresh presentation or wallet-holder proof.
 - Freshness requires `require_not_revoked: true`, `max_age_seconds: null`, and an explicit revocation grace from 0 to 300 seconds. The requirement does not request fresh issuance and has no maximum-age limit.
 - No top-level required claims, alternative requirements, prerequisite profile, issuer constraints, fallback policy, predicates, or supported circuits. The issuer allowlist is enforced by the selected trust profile.
 
-The trust profile must be owned by the same organization, `profile_type: CUSTOM`, `status: ACTIVE`, algorithms exactly `ES256`, formats exactly `VC_JWT`, allowed issuers exactly the observed managed course issuer DID, and empty denied issuers / additional trust sources. This is a dedicated course verification profile. The runner does not edit the installation’s bootstrap profiles or template references.
+Resolved ComplianceProfile policy evaluation is currently unavailable. The native policy validator rejects every non-null `compliance_profile_id` during creation, activation and evaluation; the probe therefore refuses such a policy before any verification or lifecycle POST. This capability is tracked in [UI #1901](https://github.com/ElevenID/marty-ui/issues/1901). The configured course-template profile, authenticated OB3 checks and independent `validate-ob3.py` schema validation remain separate checks. A template profile reference does not prove the saved-policy evaluator executed that profile, and this probe makes no full-conformance claim.
 
-The active course template must retain its achievement URI as `vct`, use `OpenBadgeCredential` / `VC_JWT`, and declare only required nonselective `learner_id: STRING` and `achievement: OBJECT` claims. The probe rereads and hashes the template, policy and trust profile before every lifecycle mutation. Configuration drift stops further transitions.
+The trust profile must be owned by the same organization, `profile_type: CUSTOM`, lowercase `status: active`, algorithms exactly `ES256`, formats exactly `VC_JWT`, allowed issuers exactly the observed managed course issuer DID, and empty denied issuers / additional trust sources. This is a dedicated course verification profile. The runner does not edit the installation’s bootstrap profiles or template references.
+
+The active course template must retain the exact OB3 baseline profile ID `10000000-0000-0000-0000-000000000003`, its achievement URI as `vct`, use `OpenBadgeCredential` / `VC_JWT`, and declare only required nonselective `learner_id: STRING` and `achievement: OBJECT` claims. The probe rereads and hashes the template, policy and trust profile before every lifecycle mutation. Configuration drift stops further transitions.
 
 ## Sequence and evidence
 
@@ -92,4 +94,38 @@ node probe-scope-lifecycle.cjs run scope-lifecycle-config.json
 
 Use the normal Node TLS trust configuration for the installation certificate. Certificate validation and HTTPS remain enabled.
 
-Public route and response contracts were reconciled against UI `44864dcf9bc823778eaf70efe4e861a0e77f172b`: [public credential records](https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/response_projection.rs), [VC-API adaptation](https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/vc_api.rs), [saved-policy evaluation](https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/presentation-policy/src/http_service.rs), and [native managed-status resolution](https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/presentation-policy/src/control_plane.rs). Reconcile any changed signed candidate with these contracts before execution.
+## Production contract audit and remaining live evidence
+
+The modeled responses in the tests are checked against these production owners at UI `44864dcf9bc823778eaf70efe4e861a0e77f172b`. Source review caught two earlier mock assumptions that the real API could not satisfy: a non-null saved-policy compliance selector and uppercase trust-profile status. The regressions now exercise the actual omitted/null policy contract, reject a non-null selector before POST, require lowercase active trust, and preserve the exact template-profile requirement. These Node tests do not execute the Rust serializers or establish live acceptance.
+
+| Boundary | Production behavior used by this probe | Source owner |
+|---|---|---|
+| Course template | Uppercase `ACTIVE`; public `OpenBadgeCredential`, `VC_JWT`, claim definitions and the configured compliance reference | [Template response serializer][template-response] |
+| Saved policy create/activate | Any non-null compliance selector is rejected; the existing HTTP regression requires 422. Null/absent is the available path | [Canonical validator][policy-validator], [native HTTP regression][policy-regression] |
+| Saved policy readback | Lowercase `active`; optional null fields removed recursively; disabled holder binding projects only `required: false`; complete requested-claim constraints retained | [Policy serializer][policy-http], [gateway projection][policy-gateway] |
+| Trust setup/readback | Creation starts `draft`; activation/readback is lowercase `active`; `CUSTOM`, explicit algorithm/format/issuer arrays and empty denied/source arrays remain distinct | [Trust HTTP owner][trust-http], [gateway trust projection][trust-gateway] |
+| Key create/inventory | Create returns the one-time `key`; inventory omits it. Organization keys use `ORGANIZATION`, UTC timestamps and optional omitted unused/expiry fields | [Organization HTTP owner][key-http] |
+| Key identity observation | Successful secret validation commits usage before returning UUID/organization/scopes; gateway permission checks follow authentication | [Key validation owner][key-validation], [gateway middleware][gateway-runtime] |
+| Retained issuance | Public initiation identifies the transaction/organization/template and offer; no top-level private `pre_auth_code` is required | [Public response projection][public-records] |
+| Record GET and lifecycle POST | Same credential/JWT ID, exact signed-byte hash, original transaction/subject/issuer; uppercase status; transitions return 200 after a record reload | [Record adapter][record-adapter], [credential storage][credential-storage] |
+| VC-API result | Allow: 200 with `verified`, `results`, `problemDetails: []`. Policy denial: 422 with only the generic verification error | [VC-API adaptation][vc-api] |
+| Detailed policy result | Unique authenticated issuer/template/profile/credential match; signature/trust/status evidence and RFC3339 evaluation timestamp; no public status-checked-at field | [Policy evidence projection][policy-http] |
+| Current status | Default native resolver reads the current issuer-bound managed record, timestamps that observation and normalizes active/suspended/revoked | [Managed status resolver][status-resolver] |
+
+All of the following still require observation on the next selected signed candidate: successful trust/policy create and activation; exact public readbacks; fresh R/V metadata and per-request usage advances; same-JWT R403/Vallow; each lifecycle POST and record readback; the detailed suspended/revoked denial reason; and terminal revocation. An unexpected DTO, owner permission, signature/trust result or status observation stops qualification. Confirm the deployed status resolver and reconcile any source change before execution.
+
+[template-response]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/credential-template/src/http_service.rs
+[policy-validator]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/presentation-policy/src/policy_contract.rs
+[policy-regression]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/presentation-policy/tests/http_service_behavior.rs
+[policy-http]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/presentation-policy/src/http_service.rs
+[policy-gateway]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/presentation_policy_contract.rs
+[trust-http]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/trust-profile/src/http_service.rs
+[trust-gateway]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/trust_contract.rs
+[key-http]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/organization/src/http_service.rs
+[key-validation]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/organization/src/api_keys.rs
+[gateway-runtime]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/runtime.rs
+[public-records]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/response_projection.rs
+[record-adapter]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/issuance/src/issued_credential_records.rs
+[credential-storage]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/issuance/src/credential.rs
+[vc-api]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/gateway/src/vc_api.rs
+[status-resolver]: https://github.com/ElevenID/marty-ui/blob/44864dcf9bc823778eaf70efe4e861a0e77f172b/rust/services/presentation-policy/src/control_plane.rs
