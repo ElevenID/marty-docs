@@ -241,6 +241,13 @@ fields describe the server's response; they do
 not establish whether a credential was signed or persisted, and do not enable
 automatic retries.
 
+Malformed configuration, subject, retained-state and inline-offer JSON produces
+a fixed stop code and message. The client does not print parser excerpts, which
+can contain a capability or claim before it is known to the redactor. The
+malformed input remains untouched; an already malformed `report.json` is
+also preserved instead of being replaced. Compact-JWT JSON decoding already
+uses a fixed diagnostic, and non-JSON HTTP responses do not expose parser text.
+
 Use private filesystem ACLs on Windows; Unix mode checks cannot establish those
 ACLs. Keep generated state under the default ignored `private-*` directories or
 outside the repository. Do not commit local configuration or live artifacts.

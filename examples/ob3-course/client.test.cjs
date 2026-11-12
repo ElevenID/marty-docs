@@ -300,8 +300,8 @@ function diagnosticCli(t, command) {
   const run = () => spawnSync(process.execPath, ['--require', preload, path.join(__dirname, 'ob3-client.cjs'), command, configPath], {
     encoding: 'utf8', timeout: 15000, env: { ...process.env, MARTY_API_KEY_FILE: keyPath },
   });
-  return { state, key, grant, run,
-    calls: () => fs.readFileSync(callsPath, 'utf8').trim().split('\n').map(JSON.parse),
+  return { state, key, grant, run, directory, configPath, write,
+    calls: () => fs.existsSync(callsPath) ? fs.readFileSync(callsPath, 'utf8').trim().split('\n').map(JSON.parse) : [],
     read: name => fs.readFileSync(path.join(state, name), 'utf8') };
 }
 
@@ -348,4 +348,78 @@ test('template preflight uses the same safe protocol diagnostic with its authent
   assert.ok(!fixture.read('report.json').includes('PRIVATE_'));
   assert.ok(fixture.read('api-key-template-read-response.json').includes(fixture.key));
   assert.deepEqual(fixture.calls().map(call => call.method), ['GET', 'GET', 'GET']);
+});
+
+test('private-input parse failures use fixed CLI diagnostics without exposing or replacing original bytes', async t => {
+  const sentinel = 'PRIVATE_CAPABILITY_OR_CLAIM_SENTINEL';
+  const encode = text => Buffer.from(text).toString('base64url');
+  const cases = [
+    { label: 'retained offer JSON', command: 'claim', code: 'private_state_json_invalid', change: f =>
+      f.write(path.join(f.state, 'offer-private.json'), sentinel) },
+    { label: 'retained report JSON', command: 'claim', code: 'private_state_json_invalid', originalReport: true, change: f =>
+      f.write(path.join(f.state, 'report.json'), sentinel) },
+    { label: 'inline offer JSON before its grant can be registered', command: 'claim', code: 'offer_json_invalid', change: f => {
+      const offer = JSON.parse(f.read('offer-private.json'));
+      offer.credential_offer_uri = 'openid-credential-offer://?credential_offer=' + encodeURIComponent(sentinel);
+      f.write(path.join(f.state, 'offer-private.json'), offer);
+    } },
+    { label: 'configuration JSON', command: 'claim', code: 'configuration_json_invalid', noReport: true, change: f =>
+      f.write(f.configPath, sentinel) },
+    { label: 'course subject JSON', command: 'issue', code: 'subject_json_invalid', change: f => {
+      const cfg = JSON.parse(fs.readFileSync(f.configPath, 'utf8'));
+      cfg.subjectFile = 'subject-private.json';
+      f.write(f.configPath, cfg);
+      f.write(path.join(f.directory, cfg.subjectFile), sentinel);
+    } },
+    { label: 'compact JWT header JSON', command: 'readback', code: 'invalid_jwt_json', change: f =>
+      f.write(path.join(f.state, 'credential.jwt'), `${encode(sentinel)}.${encode('{}')}.c2ln\n`) },
+    { label: 'compact JWT payload JSON', command: 'readback', code: 'invalid_jwt_json', change: f =>
+      f.write(path.join(f.state, 'credential.jwt'), `${encode('{"alg":"ES256"}')}.${encode(sentinel)}.c2ln\n`) },
+  ];
+  const snapshot = directory => {
+    const files = new Map();
+    const walk = current => {
+      for (const name of fs.readdirSync(current)) {
+        const file = path.join(current, name), stat = fs.statSync(file);
+        if (stat.isDirectory()) walk(file);
+        else files.set(file, { bytes: fs.readFileSync(file), mode: stat.mode });
+      }
+    };
+    walk(directory); return files;
+  };
+  for (const scenario of cases) await t.test(scenario.label, t => {
+    const fixture = diagnosticCli(t, scenario.command);
+    scenario.change(fixture);
+    const before = snapshot(fixture.directory);
+    // Repeating the local command must remain a parser stop, never a network
+    // request, state reset or disclosure of a previously unknown secret.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = fixture.run();
+      assert.equal(result.status, 1, result.stderr);
+      const stopped = result.stdout.trim().split('\n').map(JSON.parse).at(-1);
+      assert.equal(stopped.code, scenario.code);
+      assert.equal(stopped.privateStatePreserved, true);
+      assert.equal(stopped.automaticMutationReplay, false);
+      for (const output of [result.stdout, result.stderr]) {
+        assert.ok(!output.includes('PRIVATE_'));
+        assert.ok(!output.includes(encode(sentinel).slice(0, 12)));
+        assert.ok(!output.includes('Unexpected token'));
+      }
+      assert.deepEqual(fixture.calls(), []);
+      for (const [file, original] of before) {
+        assert.deepEqual(fs.readFileSync(file), original.bytes, file);
+        assert.equal(fs.statSync(file).mode, original.mode, file);
+      }
+      const reportFile = path.join(fixture.state, 'report.json');
+      if (scenario.noReport) assert.ok(!fs.existsSync(reportFile));
+      else if (!scenario.originalReport) {
+        const report = fs.readFileSync(reportFile, 'utf8');
+        assert.ok(!report.includes('PRIVATE_'));
+        assert.ok(!report.includes(encode(sentinel).slice(0, 12)));
+        assert.equal(JSON.parse(report).checks.at(-1).code, scenario.code);
+      }
+      for (const name of ['issuance-requested.json', 'claim-started.json', 'token-response-private.json',
+        'credential-response-private.json']) assert.ok(!fs.existsSync(path.join(fixture.state, name)), name);
+    }
+  });
 });

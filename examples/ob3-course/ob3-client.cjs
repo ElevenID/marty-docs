@@ -54,7 +54,15 @@ function privateWrite(name, value, exclusive = false) {
     (exclusive ? fs.constants.O_EXCL : fs.constants.O_TRUNC) | fs.constants.O_NOFOLLOW, 0o600);
   try { fs.writeFileSync(fd, bytes); fs.fchmodSync(fd, 0o600); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
-function readState(name) { return JSON.parse(privateRead(path.join(stateDir, name))); }
+function parseInputJson(text, code, message) {
+  // Parser excerpts can contain capabilities or claims before they are known
+  // to the redactor. Keep the original bytes private and emit fixed text.
+  try { return JSON.parse(text); } catch { throw new Stop(code, message); }
+}
+function readState(name) {
+  return parseInputJson(privateRead(path.join(stateDir, name)), 'private_state_json_invalid',
+    'Private state contains invalid JSON. Preserve the original files and reconcile before continuing.');
+}
 function event(name, outcome, detail = {}) {
   const item = { at: new Date().toISOString(), check: name, outcome, ...detail };
   report.checks.push(item);
@@ -76,7 +84,8 @@ function endpoint(value, origin) {
 function normalizeIssuer(url) { return url.href.replace(/\/$/, ''); }
 function setup(configPath) {
   need(process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0', 'tls_verification_disabled', 'TLS verification must stay enabled.');
-  const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const cfg = parseInputJson(fs.readFileSync(configPath, 'utf8'), 'configuration_json_invalid',
+    'The client configuration contains invalid JSON. Preserve the original file.');
   const origin = new URL(cfg.origin);
   need(origin.protocol === 'https:' && origin.href === origin.origin + '/', 'origin_invalid', 'origin must be an HTTPS origin without a path.');
   cfg.origin = origin.origin;
@@ -226,7 +235,8 @@ async function issue(cfg) {
   // A pre-written journal blocks replays after a timeout or an ambiguous result.
   need(!fs.existsSync(path.join(stateDir, 'issuance-requested.json')), 'issuance_already_attempted', 'Issuance was already attempted. Reconcile the existing event and transaction; do not automatically replay it.');
   const holder = prepare();
-  const subject = JSON.parse(fs.readFileSync(cfg.subjectFile, 'utf8'));
+  const subject = parseInputJson(fs.readFileSync(cfg.subjectFile, 'utf8'), 'subject_json_invalid',
+    'The course subject file contains invalid JSON. Preserve the original file.');
   need(subject?.achievement?.id === cfg.achievementId && subject?.learner_id === cfg.learnerId,
     'subject_configuration_mismatch', 'Course subject must match configured achievement and learner.');
   need(!subject.id || subject.id === holder.did, 'subject_holder_mismatch', 'Subject id differs from retained learner key.');
@@ -250,7 +260,8 @@ function parseOffer(uri) {
   const url = new URL(uri);
   need(url.protocol === 'openid-credential-offer:', 'offer_scheme', 'Expected an openid-credential-offer URI.');
   need(url.searchParams.has('credential_offer'), 'referenced_offer_unsupported', 'This narrow fixture supports inline offers; a referenced offer requires a separately reviewed retrieval policy.');
-  const offer = JSON.parse(url.searchParams.get('credential_offer'));
+  const offer = parseInputJson(url.searchParams.get('credential_offer'), 'offer_json_invalid',
+    'The inline credential offer contains invalid JSON. Preserve the original offer.');
   const grant = offer?.grants?.[PRE_AUTH];
   need(nonempty(offer.credential_issuer) && Array.isArray(offer.credential_configuration_ids) && offer.credential_configuration_ids.length === 1
     && nonempty(grant?.['pre-authorized_code']), 'offer_incomplete', 'Expected one configuration and a pre-authorized-code grant.');
