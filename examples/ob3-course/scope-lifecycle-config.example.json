@@ -1,0 +1,14 @@
+{
+  "origin": "https://REPLACE-observed-gateway.example",
+  "clientConfigFile": "REPLACE-original-course-client-config.json",
+  "policyId": "REPLACE-owned-active-course-policy-uuid",
+  "readKeyId": "REPLACE-fresh-credentials-read-only-key-uuid",
+  "readKeyFile": "REPLACE-private-read-key.txt",
+  "verifyKeyId": "REPLACE-fresh-credentials-read-and-trust-read-key-uuid",
+  "verifyKeyFile": "REPLACE-private-verify-key.txt",
+  "operatorSessionFile": "REPLACE-existing-private-session-id.txt",
+  "probeStateDirectory": "private-course-lifecycle-probe",
+  "syntheticCourse": true,
+  "revokeSyntheticCredentialLast": true,
+  "timeoutMs": 30000
+}

@@ -214,7 +214,14 @@ For explicit qualification of an already successful issuance, use the separate
 event and request bytes, records warm-cache replay and conflict behavior, then
 uses a distinct same-organization key to test durable recovery through an
 unused gateway namespace. It does not enable automatic retries in this client.
-The same page gives the public verification-scope and lifecycle test sequence.
+
+The separate [scope and lifecycle probe](./SCOPE-LIFECYCLE-QUALIFICATION.md)
+checks the same retained synthetic course JWT with a `credentials:read` key and
+a `credentials:read` plus `trust:read` key, then tests suspend → reinstate → revoke
+with current public verification evidence. It requires an existing narrow course
+policy, owned trust profile and operator session. It is one-shot, permanently
+revokes the synthetic credential last, and does not provision authority or retry
+unknown writes. Its fake tests do not establish a live qualification result.
 
 The state directory is mode `0700`; keys, offers, responses and credentials are
 mode `0600`. It contains sensitive pre-authorized codes, tokens, wallet key and
@@ -232,7 +239,7 @@ Run the local boundary checks without a deployment:
 
 ```sh
 node ob3-client.cjs offline-check
-node --test client.test.cjs probe-retries.test.cjs
+node --test client.test.cjs probe-retries.test.cjs probe-scope-lifecycle.test.cjs
 ```
 
 These cover local signatures and tampering, signed identifiers, criteria shape,
