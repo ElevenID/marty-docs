@@ -29,7 +29,7 @@ Use an isolated signed deployment containing the API scope correction from [UI #
 - `issuance-response.json`: the successful public issuance response for the same organization and template.
 - `credential.jwt`: the retained ES256 compact OB3 JWT, including `vc.id == jti`, exact original learner and achievement, and a current validity period.
 
-The recipient is required to have a `synthetic-` learner identifier. The original state directory remains unchanged. The probe uses a separate 0700 directory; secret and original files must be regular private 0600 files. No copied JWT, full claims, offer capability, key secret, or session token is written to probe evidence.
+The recipient is required to have a `synthetic-` learner identifier. The original state directory remains unchanged. The probe resolves both directory paths before creating evidence state and rejects the original directory or any descendant, including ancestor aliases and an uncreated child. Subsequent reads and writes use the admitted canonical paths. The probe uses a separate 0700 directory; secret and original files must be regular private 0600 files. No copied JWT, full claims, offer capability, key secret, or session token is written to probe evidence.
 
 The existing normal operator session must be able to read these resources and key inventory, evaluate the saved policy, and perform the three lifecycle transitions. The public direct saved-policy evaluation route uses its normal policy permission; it is separate from the narrower VC-API verification scope check. Do not grant a wider API-key scope to make the diagnostics work.
 

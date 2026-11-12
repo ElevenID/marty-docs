@@ -44,13 +44,49 @@ function config(configPath) {
   return value;
 }
 function resolveFile(cfg, filename) { return path.resolve(cfg._directory, filename); }
-function privateDir(directory) {
-  if (!fs.existsSync(directory)) fs.mkdirSync(directory, { mode: 0o700 });
+function checkPrivateDir(directory) {
   const stat = fs.lstatSync(directory);
   need(stat.isDirectory() && !stat.isSymbolicLink(), 'private_directory_type', 'Private state directory must be a real directory.');
   need(process.platform === 'win32' || (stat.mode & 0o077) === 0,
     'private_directory_permissions', 'Private state directory must be mode 0700.');
   return directory;
+}
+function privateDir(directory) {
+  if (!fs.existsSync(directory)) fs.mkdirSync(directory, { mode: 0o700 });
+  return checkPrivateDir(directory);
+}
+function probeDirectories(original, intended) {
+  need(fs.existsSync(original), 'original_state_missing', 'The original successful issuance directory must already exist.');
+  checkPrivateDir(original); // Inspect only: never create or chmod original state.
+  const source = fs.realpathSync(original);
+  const sourceStat = fs.statSync(source, { bigint: true });
+  // Resolve an intended directory even when its final components do not exist.
+  // Admission precedes mkdir, including for an alias into original/new-child.
+  let ancestor = path.resolve(intended), found;
+  const missing = [];
+  for (;;) {
+    try { found = fs.lstatSync(ancestor); break; } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const parent = path.dirname(ancestor);
+      need(parent !== ancestor, 'probe_directory_invalid', 'Probe evidence needs an existing parent directory.');
+      missing.unshift(path.basename(ancestor)); ancestor = parent;
+    }
+  }
+  const parent = fs.realpathSync(ancestor);
+  const target = path.join(parent, ...missing);
+  const outside = target !== source && !target.startsWith(source + path.sep);
+  need(outside, 'probe_directory_invalid', 'Probe evidence must stay outside the original issuance directory.');
+  // Directory identity also catches mount aliases whose canonical path differs.
+  for (let current = parent;; current = path.dirname(current)) {
+    const stat = fs.statSync(current, { bigint: true });
+    need(stat.dev !== sourceStat.dev || stat.ino !== sourceStat.ino,
+      'probe_directory_invalid', 'Probe evidence must not share the original directory or one of its descendants.');
+    if (path.dirname(current) === current) break;
+  }
+  // Preserve the existing refusal of a directly supplied symlink directory.
+  need(missing.length > 0 || found.isDirectory() && !found.isSymbolicLink(),
+    'private_directory_type', 'Private state directory must be a real directory.');
+  return { original: source, directory: privateDir(target) };
 }
 function readPrivate(filename, maximum = MAX_BYTES) {
   const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
@@ -134,4 +170,4 @@ function failure(error, stage) {
     message: sanitize(error.message), ...(error instanceof Stop ? error.extra : {}), automaticMutationReplay: false };
 }
 module.exports = { Stop, need, nonempty, hash, runtime, remember, sanitize, config, resolveFile,
-  privateDir, readPrivate, writePrivate, readJson, sameOrigin, request, requireJson, sessionValue, operatorMatches, failure };
+  privateDir, probeDirectories, readPrivate, writePrivate, readJson, sameOrigin, request, requireJson, sessionValue, operatorMatches, failure };

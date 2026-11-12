@@ -53,12 +53,8 @@ function load(configFile, now) {
   c.need(client.origin === cfg.origin && UUID.test(client.organizationId) && UUID.test(client.credentialTemplateId) &&
     client.authMode === 'api-key' && /^synthetic-[A-Za-z0-9._:-]+$/.test(client.learnerId) && c.nonempty(client.stateDirectory),
   'client_binding_invalid', 'The original direct course must use this HTTPS origin and a synthetic learner.');
-  const original = c.resolveFile(client, client.stateDirectory);
-  c.need(fs.existsSync(original), 'original_state_missing', 'The original successful course state must already exist.');
-  c.privateDir(original);
-  const directory = c.privateDir(c.resolveFile(cfg, cfg.probeStateDirectory));
-  c.need(directory !== original && !directory.startsWith(original + path.sep),
-    'probe_directory_invalid', 'Use a separate private evidence directory outside original issuance state.');
+  const { original, directory } = c.probeDirectories(c.resolveFile(client, client.stateDirectory),
+    c.resolveFile(cfg, cfg.probeStateDirectory));
   const hashes = {};
   const read = name => { const raw = c.readPrivate(path.join(original, name)); hashes[name] = c.hash(raw); return raw; };
   const journal = parsePrivate(read('issuance-requested.json'));

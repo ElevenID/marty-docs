@@ -63,6 +63,12 @@ labels also remain bound; none of these private capability values is logged.
   directories mode `0700`, and generated state outside source control. Use
   equivalent private ACLs on Windows.
 
+The evidence directory must be outside the original issuance directory. Both
+paths are resolved before evidence state is created, including through ancestor
+aliases and when a proposed child does not exist yet. Equal or nested locations
+are refused without changing original files or directories; subsequent reads
+and writes use the admitted canonical paths.
+
 There is no supported public key-secret introspection route in this native
 contract. The helper reads `/v1/api-keys?organization_id=<org>&limit=500&offset=0`,
 performs a harmless template GET with each key, and reads the inventory again.
