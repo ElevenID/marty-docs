@@ -1,0 +1,12 @@
+{
+  "origin": "https://REPLACE-gateway.example",
+  "clientConfigFile": "private-onboarding/client-config.json",
+  "primaryKeyId": "REPLACE-with-original-key-uuid",
+  "primaryKeyFile": "private-onboarding/client-api-key.txt",
+  "secondaryKeyId": "REPLACE-with-new-unused-key-uuid",
+  "secondaryKeyFile": "private-retry-inputs/secondary-api-key.txt",
+  "operatorSessionFile": "private-login/session-id.txt",
+  "probeStateDirectory": "private-retry-001",
+  "maintenanceReceiptFile": "private-retry-inputs/native-maintenance-receipt.json",
+  "timeoutMs": 30000
+}

@@ -160,10 +160,13 @@ function requireJson(response, code) {
   return response.json;
 }
 async function api(cfg, method, route, body, extraHeaders = {}, auth = authenticationHeaders(cfg)) {
+  return apiWire(cfg, method, route, body === undefined ? undefined : JSON.stringify(body), extraHeaders, auth);
+}
+async function apiWire(cfg, method, route, requestBody, extraHeaders = {}, auth = authenticationHeaders(cfg)) {
   return request(cfg, cfg.origin + route, { method, headers: {
     Accept: 'application/json', ...auth,
-    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...extraHeaders,
-  }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
+    ...(requestBody !== undefined ? { 'Content-Type': 'application/json' } : {}), ...extraHeaders,
+  }, ...(requestBody !== undefined ? { body: requestBody } : {}) });
 }
 function loadHolder() {
   const pem = privateRead(path.join(stateDir, 'learner-private-key.pem'));
@@ -218,8 +221,12 @@ async function issue(cfg) {
   subject.id = holder.did;
   const body = { organization_id: cfg.organizationId, credential_template_id: cfg.credentialTemplateId,
     issuer_did: cfg.issuerDid, subject_did: holder.did, holder_did: holder.did, credential_subject: subject };
-  privateWrite('issuance-requested.json', { requestedAt: new Date().toISOString(), completionEventId: cfg.completionEventId, body }, true);
-  const response = await api(cfg, 'POST', '/v1/issuance', body, { 'Idempotency-Key': cfg.completionEventId });
+  // Keep the exact JSON bytes sent below so a later controlled retry probe
+  // can reproduce the gateway fingerprint without altering this journal.
+  const requestBody = JSON.stringify(body);
+  privateWrite('issuance-requested.json', { requestedAt: new Date().toISOString(), completionEventId: cfg.completionEventId,
+    body, requestBody, requestBodySha256: hash(requestBody) }, true);
+  const response = await apiWire(cfg, 'POST', '/v1/issuance', requestBody, { 'Idempotency-Key': cfg.completionEventId });
   privateWrite('issuance-response.json', { status: response.status, body: response.json || response.raw }, true);
   const offer = requireJson(response, 'issuance_failed');
   need(nonempty(offer.id) && offer.organization_id === cfg.organizationId && offer.credential_template_id === cfg.credentialTemplateId
