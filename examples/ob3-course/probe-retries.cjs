@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const c = require('./public-client-common.cjs');
+const { parseOffer } = require('./ob3-client.cjs');
 
 const SCOPES = ['credentials:issue', 'credentials:read', 'templates:read'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,6 +27,25 @@ function configuration(filename) {
     if (error instanceof SyntaxError) throw new c.Stop('configuration_invalid', 'Probe or original client configuration contains malformed JSON.');
     throw error;
   }
+}
+function publicOffer(uri, origin, organizationId) {
+  let parsed;
+  try {
+    const url = new URL(uri);
+    if (url.searchParams.getAll('credential_offer').length !== 1 || url.searchParams.has('credential_offer_uri') || url.hash)
+      throw new Error('ambiguous offer');
+    parsed = parseOffer(uri);
+  } catch {
+    // parseOffer can encounter private JSON/URL syntax errors before it has
+    // registered the capability. Never expose its exception text here.
+    throw new c.Stop('public_offer_invalid', 'The retained public offer must contain one valid inline pre-authorized grant.');
+  }
+  c.remember(uri); c.remember(parsed.code);
+  const issuer = c.sameOrigin(parsed.issuer, origin);
+  c.need(!issuer.search && issuer.pathname.replace(/\/$/, '').endsWith('/org/' + organizationId) &&
+    c.nonempty(parsed.configurationId),
+  'public_offer_binding_invalid', 'The public offer must identify this tenant issuer and one named credential configuration.');
+  return parsed;
 }
 function existingDirectory(directory) {
   c.need(fs.existsSync(directory), 'original_state_missing', 'The original successful issuance directory must already exist.');
@@ -88,10 +108,10 @@ function loadInputs(configFile) {
     journal.completionEventId === client.completionEventId,
   'original_event_invalid', 'Use the unchanged original completion-event Idempotency-Key.');
   c.need(Number.isInteger(initial.status) && initial.status >= 200 && initial.status < 300 && object(initial.body) && equal(initial.body, offer) &&
-    c.nonempty(offer.id) && offer.organization_id === client.organizationId && offer.credential_template_id === client.credentialTemplateId &&
-    c.nonempty(offer.credential_offer_uri) && c.nonempty(offer.pre_auth_code) && Number.isFinite(Date.parse(offer.expires_at)),
+    UUID.test(offer.id) && offer.organization_id === client.organizationId && offer.credential_template_id === client.credentialTemplateId &&
+    c.nonempty(offer.credential_offer_uri) && object(offer.credential_offer_uris) && object(offer.credential_offer_labels) && Number.isFinite(Date.parse(offer.expires_at)),
   'original_success_required', 'A successful original response and its matching retained offer are required; unknown issuance cannot be probed.');
-  c.remember(offer.pre_auth_code); c.remember(offer.credential_offer_uri);
+  const parsedOffer = publicOffer(offer.credential_offer_uri, cfg.origin, client.organizationId);
   const captured = journal.requestBody !== undefined || journal.requestBodySha256 !== undefined;
   const wire = captured ? journal.requestBody : JSON.stringify(body);
   c.need(typeof wire === 'string' && (!captured || c.hash(wire) === journal.requestBodySha256),
@@ -110,7 +130,7 @@ function loadInputs(configFile) {
     'conflict_subject_collision', 'The synthetic conflict marker unexpectedly equals the original learner.');
   const binding = c.hash(JSON.stringify({ origin: cfg.origin, organizationId: client.organizationId,
     primaryKeyId: cfg.primaryKeyId, secondaryKeyId: cfg.secondaryKeyId, inputs, requestHash: c.hash(wire) }));
-  return { cfg, client, directory, journal, offer, wire, conflictWire: JSON.stringify(changed), primary, secondary, session, binding,
+  return { cfg, client, directory, journal, offer, parsedOffer, wire, conflictWire: JSON.stringify(changed), primary, secondary, session, binding,
     wireSource: captured ? 'captured_original_request_bytes' : 'legacy_helper_JSON.stringify_reconstruction' };
 }
 
@@ -149,7 +169,7 @@ async function runPhase(phase, configFile, { request = c.request, now = Date.now
     Object.assign(item, { state: 'responded', httpStatus: response.status,
       correlationId: c.sanitize(response.headers.get('x-correlation-id')),
       idempotencyReplayed: response.headers.get('idempotency-replayed') == null ? null : c.sanitize(response.headers.get('idempotency-replayed')) });
-    if (object(response.json) && c.nonempty(response.json.id)) item.responseId = c.sanitize(response.json.id);
+    if (object(response.json) && UUID.test(response.json.id)) item.responseId = response.json.id;
     return response;
   }
   async function inventory(label) {
@@ -174,8 +194,10 @@ async function runPhase(phase, configFile, { request = c.request, now = Date.now
     const response = await call(label + '-template-read', '/v1/credential-templates/' + encodeURIComponent(client.credentialTemplateId) +
       '?organization_id=' + encodeURIComponent(client.organizationId), { headers: { 'X-API-Key': secret, Accept: 'application/json' } }, keyId);
     c.need(response.status === 200 && response.json?.id === client.credentialTemplateId && response.json?.organization_id === client.organizationId &&
-      response.json?.issuer_did === client.issuerDid && String(response.json?.status).toUpperCase() === 'ACTIVE',
-    'key_template_read_failed', 'The selected key must read the exact active course template and issuer.');
+      response.json?.issuer_did === client.issuerDid && String(response.json?.status).toUpperCase() === 'ACTIVE' &&
+      response.json?.credential_type === input.parsedOffer.configurationId &&
+      ['VC_JWT', 'JWT_VC', 'JWT_VC_JSON'].includes(String(response.json?.credential_payload_format).toUpperCase()),
+    'key_template_read_failed', 'The selected key must read the exact active course template, issuer and offered VC-JWT configuration.');
     const after = await inventory(label + '-inventory-after');
     c.need(equal([...before.keys()].sort(), [...after.keys()].sort()), 'key_usage_ambiguous', 'The key inventory changed during the observation.');
     const changed = [];
@@ -208,9 +230,12 @@ async function runPhase(phase, configFile, { request = c.request, now = Date.now
     }
     if (expectedStatus === 'success') {
       const value = response.json;
+      c.need(object(value), 'durable_transaction_mismatch', 'Replay must return the public issuance response object.');
+      const parsedOffer = publicOffer(value.credential_offer_uri, cfg.origin, client.organizationId);
       c.need(object(value) && value.id === offer.id && value.organization_id === offer.organization_id &&
         value.credential_template_id === offer.credential_template_id && Date.parse(value.expires_at) === Date.parse(offer.expires_at) &&
-        value.pre_auth_code === offer.pre_auth_code && value.credential_offer_uri === offer.credential_offer_uri,
+        value.credential_offer_uri === offer.credential_offer_uri && equal(parsedOffer, input.parsedOffer) &&
+        equal(value.credential_offer_uris, offer.credential_offer_uris) && equal(value.credential_offer_labels, offer.credential_offer_labels),
       'durable_transaction_mismatch', 'Replay must preserve the committed transaction, tenant, template, offer capability and expiry.');
       // The transaction can progress from pending to issued between phases.
       // A cached response may describe an older state, so do not equate snapshots.

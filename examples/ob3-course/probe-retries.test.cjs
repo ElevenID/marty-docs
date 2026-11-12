@@ -14,6 +14,8 @@ const IDS = {
   transaction: '55555555-5555-4555-8555-555555555555',
 };
 const NOW = Date.parse('2026-11-12T10:00:00Z');
+const PRE_AUTH = 'urn:ietf:params:oauth:grant-type:pre-authorized_code';
+const offerUri = payload => 'openid-credential-offer://?credential_offer=' + encodeURIComponent(JSON.stringify(payload));
 
 function fixture(t, { legacy = false, spaced = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ob3-retry-test-'));
@@ -30,9 +32,12 @@ function fixture(t, { legacy = false, spaced = false } = {}) {
   const wire = spaced ? JSON.stringify(body, null, 2) + '\n' : JSON.stringify(body);
   const journal = { requestedAt: new Date(NOW - 30000).toISOString(), completionEventId: 'synthetic-course-event-001', body,
     ...(legacy ? {} : { requestBody: wire, requestBodySha256: c.hash(wire) }) };
+  const capability = 'private-synthetic-capability';
+  const offerPayload = { credential_issuer: 'https://issuer.example/org/' + IDS.org,
+    credential_configuration_ids: ['OpenBadgeCredential'], grants: { [PRE_AUTH]: { 'pre-authorized_code': capability } } };
+  // The gateway public projection deliberately excludes top-level pre_auth_code.
   const offer = { id: IDS.transaction, organization_id: IDS.org, credential_template_id: IDS.template, status: 'pending',
-    credential_offer_uri: 'openid-credential-offer://?credential_offer=private-synthetic-offer',
-    pre_auth_code: 'private-synthetic-capability', expires_at: '2026-11-19T10:00:00Z' };
+    credential_offer_uri: offerUri(offerPayload), credential_offer_uris: {}, credential_offer_labels: {}, expires_at: '2026-11-19T10:00:00Z' };
   save('original/issuance-requested.json', journal);
   save('original/issuance-response.json', { status: 200, body: offer });
   save('original/offer-private.json', offer);
@@ -54,9 +59,14 @@ function fixture(t, { legacy = false, spaced = false } = {}) {
   let sequence = 1;
   const response = (status, json, replay = null, correlation = 'synthetic-correlation') => ({ status, json,
     raw: JSON.stringify(json), headers: new Headers({ 'x-correlation-id': correlation, ...(replay === null ? {} : { 'idempotency-replayed': replay }) }) });
-  const state = { original, evidence, cfg, journal, offer, wire, rows, requests, posts, secrets, response,
+  const state = { original, evidence, cfg, journal, offer, offerPayload, capability, wire, rows, requests, posts, secrets, response,
     pauseReceipt() { save('maintenance.json', { observed: 'native pause and resume', syntheticFixture: true }); },
     save, rewriteConfig() { save('probe.json', cfg); },
+    replaceOfferUri(uri) {
+      offer.credential_offer_uri = uri;
+      save('original/offer-private.json', offer);
+      save('original/issuance-response.json', { status: 200, body: offer });
+    },
     originalHashes() { return Object.fromEntries(fs.readdirSync(original).map(name => [name, c.hash(fs.readFileSync(path.join(original, name)))])); },
     override: null, freezeUsage: false, concurrentUsage: false, transactionStatus: 'pending' };
   async function transport(_cfg, route, options) {
@@ -72,7 +82,8 @@ function fixture(t, { legacy = false, spaced = false } = {}) {
     if (state.concurrentUsage) rows.find(row => row.id !== id).last_used_at = '2026-11-12T10:00:00.' + String(sequence++).padStart(6, '0') + '+00:00';
     if (route.startsWith('/v1/credential-templates/')) {
       assert.equal(method, 'GET');
-      return response(200, { id: IDS.template, organization_id: IDS.org, status: 'ACTIVE', issuer_did: body.issuer_did });
+      return response(200, { id: IDS.template, organization_id: IDS.org, status: 'ACTIVE', issuer_did: body.issuer_did,
+        credential_type: 'OpenBadgeCredential', credential_payload_format: 'VC_JWT' });
     }
     if (route === '/v1/issuance') {
       assert.equal(method, 'POST');
@@ -112,6 +123,7 @@ function fixture(t, { legacy = false, spaced = false } = {}) {
 
 test('two explicit phases preserve original bytes/state, prove distinct usage, and permit advancing transaction snapshots', async t => {
   const f = fixture(t, { spaced: true });
+  assert.equal(f.offer.pre_auth_code, undefined);
   const originals = f.originalHashes();
   const warm = await f.run('warm');
   assert.equal(warm.state, 'passed');
@@ -128,7 +140,7 @@ test('two explicit phases preserve original bytes/state, prove distinct usage, a
   assert.deepEqual(f.originalHashes(), originals);
   assert.equal(f.posts.length, 5);
   const output = JSON.stringify([warm, durable]);
-  for (const secret of [...Object.values(f.secrets), f.offer.pre_auth_code, f.offer.credential_offer_uri, f.wire]) assert.ok(!output.includes(secret));
+  for (const secret of [...Object.values(f.secrets), f.capability, f.offer.credential_offer_uri, f.wire]) assert.ok(!output.includes(secret));
   for (const name of fs.readdirSync(f.evidence)) assert.equal(fs.statSync(path.join(f.evidence, name)).mode & 0o077, 0);
 });
 
@@ -136,6 +148,43 @@ test('supports unchanged legacy helper journals through explicitly labelled byte
   const f = fixture(t, { legacy: true });
   assert.equal((await f.run('warm')).wireSource, 'legacy_helper_JSON.stringify_reconstruction');
   assert.equal(f.posts[0].body, JSON.stringify(f.journal.body));
+});
+
+test('public offers require an unambiguous valid grant and the retained tenant/configuration', async t => {
+  for (const kind of ['missing-grant', 'malformed-grant', 'malformed-json', 'conflicting-inline-grants', 'wrong-tenant', 'wrong-configuration']) {
+    await t.test(kind, async t => {
+      const f = fixture(t);
+      const payload = structuredClone(f.offerPayload);
+      if (kind === 'missing-grant') delete payload.grants[PRE_AUTH];
+      if (kind === 'malformed-grant') payload.grants[PRE_AUTH]['pre-authorized_code'] = { secret: 'PRIVATE_GRANT_SENTINEL' };
+      if (kind === 'wrong-tenant') payload.credential_issuer = 'https://issuer.example/org/' + IDS.a;
+      if (kind === 'wrong-configuration') payload.credential_configuration_ids = ['AnotherCredential'];
+      let uri = offerUri(payload);
+      if (kind === 'malformed-json') uri = 'openid-credential-offer://?credential_offer=' + encodeURIComponent('{"secret":"PRIVATE_GRANT_SENTINEL" BAD}');
+      if (kind === 'conflicting-inline-grants') {
+        const changed = structuredClone(payload); changed.grants[PRE_AUTH]['pre-authorized_code'] = 'PRIVATE_OTHER_GRANT';
+        uri += '&credential_offer=' + encodeURIComponent(JSON.stringify(changed));
+      }
+      f.replaceOfferUri(uri);
+      await assert.rejects(f.run('warm'), error => {
+        assert.ok(['public_offer_invalid', 'public_offer_binding_invalid', 'key_template_read_failed'].includes(error.code));
+        assert.ok(!JSON.stringify(c.failure(error, 'retry-probe')).includes('PRIVATE_GRANT_SENTINEL'));
+        return true;
+      });
+      assert.equal(f.posts.length, 0);
+    });
+  }
+});
+
+test('replay cannot change a public inline grant while retaining the transaction ID', async t => {
+  const f = fixture(t);
+  await f.run('warm'); f.pauseReceipt();
+  const changed = structuredClone(f.offerPayload);
+  changed.grants[PRE_AUTH]['pre-authorized_code'] = 'PRIVATE_CHANGED_GRANT';
+  f.override = (_request, count) => count === 4 ? f.response(200, { ...f.offer, credential_offer_uri: offerUri(changed) }, 'false') : null;
+  await assert.rejects(f.run('durable'), { code: 'durable_transaction_mismatch' });
+  assert.equal(f.posts.length, 4);
+  assert.ok(!JSON.stringify(f.report('durable')).includes('PRIVATE_CHANGED_GRANT'));
 });
 
 test('refuses identical key IDs/secrets, mismatched tenant/scopes, and previously used B before issuance requests', async t => {
@@ -243,7 +292,7 @@ test('cold misses, generic/in-progress conflicts, and changed transaction IDs st
 
 test('a timeout leaves requested evidence, redacts diagnostics, and makes both rerun and automatic retry impossible', async t => {
   const f = fixture(t);
-  f.override = () => { throw new c.Stop('transport_failed', 'Timed out ' + f.secrets.a + ' ' + f.offer.pre_auth_code,
+  f.override = () => { throw new c.Stop('transport_failed', 'Timed out ' + f.secrets.a + ' ' + f.capability,
     { mutationOutcome: 'unknown' }); };
   await assert.rejects(f.run('warm'), { code: 'transport_failed' });
   assert.equal(f.posts.length, 1);
@@ -252,7 +301,7 @@ test('a timeout leaves requested evidence, redacts diagnostics, and makes both r
   assert.equal(report.failure.mutationOutcome, 'unknown');
   assert.equal(report.checks.at(-1).state, 'requested');
   assert.ok(!JSON.stringify(report).includes(f.secrets.a));
-  assert.ok(!JSON.stringify(report).includes(f.offer.pre_auth_code));
+  assert.ok(!JSON.stringify(report).includes(f.capability));
   const count = f.requests.length;
   await assert.rejects(f.run('warm'), { code: 'phase_already_attempted' });
   assert.equal(f.requests.length, count);

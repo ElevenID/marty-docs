@@ -33,6 +33,12 @@ that provenance explicitly. A successful warm cache replay must confirm the
 original gateway fingerprint. If the warm cache has expired, the probe stops.
 Do not reissue or reset state to manufacture a warm result.
 
+The public response omits the service's top-level `pre_auth_code`. The probe uses
+the existing `parseOffer` helper to recover the grant from `credential_offer_uri`,
+validates its same-origin tenant issuer and observed template configuration,
+and requires the exact URI and parsed grant to remain unchanged. Offer maps and
+labels also remain bound; none of these private capability values is logged.
+
 ## Required inputs
 
 - Use a disposable synthetic course and a signed deployment whose runtime
@@ -185,4 +191,5 @@ not qualify a deployed gateway or certify OB3 interoperability.
 - [Gateway authentication provider](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/gateway/src/providers.rs)
 - [Per-request owner key validation and committed usage](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/organization/src/api_keys.rs)
 - [Durable request fingerprint and recovery](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/issuance/src/initiation.rs)
+- [Public issuance response projection](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/gateway/src/response_projection.rs)
 - [Public lifecycle body contract](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/gateway/src/issuance_lifecycle_contract.rs)
