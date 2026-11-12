@@ -17,6 +17,17 @@ const NOW = Date.parse('2026-11-12T10:00:00Z');
 const PRE_AUTH = 'urn:ietf:params:oauth:grant-type:pre-authorized_code';
 const offerUri = payload => 'openid-credential-offer://?credential_offer=' + encodeURIComponent(JSON.stringify(payload));
 
+function privateTree(root) {
+  const result = [];
+  function visit(relative) {
+    const filename = path.join(root, relative), stat = fs.lstatSync(filename);
+    result.push({ path: relative, mode: stat.mode & 0o7777, directory: stat.isDirectory(),
+      hash: stat.isFile() ? c.hash(fs.readFileSync(filename)) : null });
+    if (stat.isDirectory()) for (const name of fs.readdirSync(filename).sort()) visit(path.join(relative, name));
+  }
+  visit(''); return result;
+}
+
 function fixture(t, { legacy = false, spaced = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ob3-retry-test-'));
   fs.chmodSync(root, 0o700);
@@ -316,4 +327,48 @@ test('an unexpected successful conflict response is never followed by another is
   await assert.rejects(f.run('durable'), { code: 'retry_result_unexpected' });
   assert.equal(f.posts.length, 3);
   assert.equal(f.report('durable').durableRecoveryConfirmed, undefined);
+});
+
+test('retry evidence rejects original-directory aliases before creating anything or calling transport', async t => {
+  for (const scenario of ['equal-alias', 'existing-nested-alias', 'missing-alias-child', 'missing-alias-parents', 'direct-missing-child', 'original-through-alias']) await t.test(scenario, async t => {
+    const f = fixture(t), root = path.dirname(f.original);
+    f.save('original/report.json', { retainedOriginalReport: true });
+    fs.mkdirSync(path.join(f.original, 'retained-child'), { mode: 0o700 });
+    fs.symlinkSync(root, path.join(root, 'alias'), 'dir');
+    f.cfg.probeStateDirectory = {
+      'equal-alias': 'alias/original', 'existing-nested-alias': 'alias/original/retained-child',
+      'missing-alias-child': 'alias/original/new-child', 'missing-alias-parents': 'alias/original/new-parent/new-child',
+      'direct-missing-child': 'original/new-child', 'original-through-alias': 'original/new-child',
+    }[scenario];
+    if (scenario === 'original-through-alias') {
+      const client = c.readJson(path.join(root, 'client.json')); client.stateDirectory = 'alias/original'; f.save('client.json', client);
+    }
+    f.rewriteConfig();
+    const before = privateTree(f.original);
+    await assert.rejects(f.run('warm'), { code: 'probe_directory_invalid' });
+    assert.equal(f.requests.length, 0);
+    assert.deepEqual(privateTree(f.original), before, 'original files, directories and modes remain unchanged');
+  });
+});
+
+test('retry evidence uses the admitted canonical directory when a disjoint ancestor alias later changes', async t => {
+  const f = fixture(t), root = path.dirname(f.original), alias = path.join(root, 'alias');
+  f.save('original/report.json', { retainedOriginalReport: true });
+  fs.symlinkSync(root, alias, 'dir');
+  f.cfg.probeStateDirectory = 'alias/probe'; f.rewriteConfig();
+  const before = privateTree(f.original);
+  f.override = () => { fs.unlinkSync(alias); fs.symlinkSync(f.original, alias, 'dir'); f.override = null; };
+  assert.equal((await f.run('warm')).state, 'passed');
+  assert.equal(f.report('warm').state, 'passed');
+  assert.equal(fs.existsSync(path.join(f.original, 'probe')), false);
+  assert.deepEqual(privateTree(f.original), before);
+});
+
+test('retry evidence still refuses a directly supplied disjoint symlink directory', async t => {
+  const f = fixture(t), root = path.dirname(f.original);
+  c.privateDir(f.evidence); fs.symlinkSync(f.evidence, path.join(root, 'direct-link'), 'dir');
+  f.cfg.probeStateDirectory = 'direct-link'; f.rewriteConfig();
+  await assert.rejects(f.run('warm'), { code: 'private_directory_type' });
+  assert.equal(f.requests.length, 0);
+  assert.deepEqual(fs.readdirSync(f.evidence), []);
 });

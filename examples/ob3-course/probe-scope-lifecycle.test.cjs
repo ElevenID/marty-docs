@@ -14,6 +14,16 @@ const ID = { org: '11111111-1111-4111-8111-111111111111', template: '22222222-22
   transaction: '55555555-5555-4555-8555-555555555555', policy: '66666666-6666-4666-8666-666666666666',
   trust: '77777777-7777-4777-8777-777777777777', credential: 'urn:uuid:88888888-8888-4888-8888-888888888888' };
 const NOW = Date.parse('2026-11-12T10:00:00Z');
+function privateTree(root) {
+  const result = [];
+  function visit(relative) {
+    const filename = path.join(root, relative), stat = fs.lstatSync(filename);
+    result.push({ path: relative, mode: stat.mode & 0o7777, directory: stat.isDirectory(),
+      hash: stat.isFile() ? c.hash(fs.readFileSync(filename)) : null });
+    if (stat.isDirectory()) for (const name of fs.readdirSync(filename).sort()) visit(path.join(relative, name));
+  }
+  visit(''); return result;
+}
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'course-lifecycle-probe-'));
   fs.chmodSync(root, 0o700);
@@ -233,4 +243,46 @@ test('malformed private JSON and malformed JWT fail with fixed diagnostics befor
     assert.equal(f.requests.length, 0);
     assert.equal(fs.existsSync(path.join(f.evidence, 'attempt.json')), false);
   });
+});
+
+test('lifecycle evidence rejects original-directory aliases before creating anything or calling transport', async t => {
+  for (const scenario of ['equal-alias', 'existing-nested-alias', 'missing-alias-child', 'missing-alias-parents', 'direct-missing-child', 'original-through-alias']) await t.test(scenario, async t => {
+    const f = fixture(t);
+    f.save('original/report.json', { retainedOriginalReport: true });
+    fs.mkdirSync(path.join(f.original, 'retained-child'), { mode: 0o700 });
+    fs.symlinkSync(f.root, path.join(f.root, 'alias'), 'dir');
+    f.cfg.probeStateDirectory = {
+      'equal-alias': 'alias/original', 'existing-nested-alias': 'alias/original/retained-child',
+      'missing-alias-child': 'alias/original/new-child', 'missing-alias-parents': 'alias/original/new-parent/new-child',
+      'direct-missing-child': 'original/new-child', 'original-through-alias': 'original/new-child',
+    }[scenario];
+    if (scenario === 'original-through-alias') { f.client.stateDirectory = 'alias/original'; f.save('client.json', f.client); }
+    f.save('probe.json', f.cfg);
+    const before = privateTree(f.original);
+    await assert.rejects(f.run(), { code: 'probe_directory_invalid' });
+    assert.equal(f.requests.length, 0);
+    assert.deepEqual(privateTree(f.original), before, 'original files, directories and modes remain unchanged');
+  });
+});
+
+test('lifecycle evidence uses the admitted canonical directory when a disjoint ancestor alias later changes', async t => {
+  const f = fixture(t), alias = path.join(f.root, 'alias');
+  f.save('original/report.json', { retainedOriginalReport: true });
+  fs.symlinkSync(f.root, alias, 'dir');
+  f.cfg.probeStateDirectory = 'alias/probe'; f.save('probe.json', f.cfg);
+  const before = privateTree(f.original);
+  f.override = () => { fs.unlinkSync(alias); fs.symlinkSync(f.original, alias, 'dir'); f.override = null; };
+  assert.equal((await f.run()).state, 'passed');
+  assert.equal(f.report().state, 'passed');
+  assert.equal(fs.existsSync(path.join(f.original, 'probe')), false);
+  assert.deepEqual(privateTree(f.original), before);
+});
+
+test('lifecycle evidence still refuses a directly supplied disjoint symlink directory', async t => {
+  const f = fixture(t);
+  c.privateDir(f.evidence); fs.symlinkSync(f.evidence, path.join(f.root, 'direct-link'), 'dir');
+  f.cfg.probeStateDirectory = 'direct-link'; f.save('probe.json', f.cfg);
+  await assert.rejects(f.run(), { code: 'private_directory_type' });
+  assert.equal(f.requests.length, 0);
+  assert.deepEqual(fs.readdirSync(f.evidence), []);
 });

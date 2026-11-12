@@ -47,10 +47,6 @@ function publicOffer(uri, origin, organizationId) {
   'public_offer_binding_invalid', 'The public offer must identify this tenant issuer and one named credential configuration.');
   return parsed;
 }
-function existingDirectory(directory) {
-  c.need(fs.existsSync(directory), 'original_state_missing', 'The original successful issuance directory must already exist.');
-  return c.privateDir(directory);
-}
 function timestamp(value) {
   const match = typeof value === 'string' && /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(?:Z|\+00:00)$/.exec(value);
   c.need(match && Number.isFinite(Date.parse(match[1] + 'Z')), 'key_timestamp_invalid', 'API-key usage must have an unambiguous UTC timestamp.');
@@ -84,10 +80,8 @@ function loadInputs(configFile) {
   c.need(cfg.origin === client.origin && client.authMode === 'api-key' && UUID.test(client.organizationId) &&
     UUID.test(cfg.primaryKeyId) && UUID.test(cfg.secondaryKeyId) && cfg.primaryKeyId !== cfg.secondaryKeyId,
   'probe_binding_invalid', 'Configure the original API-key client and two distinct key UUIDs on its HTTPS origin.');
-  const original = existingDirectory(c.resolveFile(client, client.stateDirectory));
-  const directory = c.privateDir(c.resolveFile(cfg, cfg.probeStateDirectory));
-  c.need(directory !== original && !directory.startsWith(original + path.sep),
-    'probe_directory_invalid', 'Probe evidence must use a separate private directory outside original issuance state.');
+  const { original, directory } = c.probeDirectories(c.resolveFile(client, client.stateDirectory),
+    c.resolveFile(cfg, cfg.probeStateDirectory));
   const inputs = {};
   const read = filename => {
     const raw = c.readPrivate(path.join(original, filename));
