@@ -1,0 +1,17 @@
+{
+  "origin": "https://localhost:18443",
+  "operatorEmail": "operator@localhost",
+  "expectedOrganizationDisplayName": "Canyon Skills Academy",
+  "stateDirectory": "private-onboarding",
+  "loginStateDirectory": "private-operator",
+  "sessionFile": "private-operator/session-id.txt",
+  "courseName": "Workplace Safety Foundations",
+  "courseDescription": "Completed Canyon Skills Academy's synthetic workplace safety workshop and assessment.",
+  "criteriaNarrative": "Complete the workshop and score at least 80 percent on the practical assessment.",
+  "achievementId": "https://canyon-skills.example/achievements/workplace-safety-foundations",
+  "learnerId": "synthetic-learner-a",
+  "completionEventId": "canyon-safety-learner-a-completion-001",
+  "apiKeyName": "canyon-course-client",
+  "apiKeyExpiresHours": 24,
+  "timeoutMs": 30000
+}

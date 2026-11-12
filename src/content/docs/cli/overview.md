@@ -1,51 +1,63 @@
 ---
 title: CLI Overview
-description: Overview of the Marty CLI and all available commands.
+description: Command contracts for the released native Marty CLI v0.3.6.
 sidebar:
   order: 0
 ---
 
-The **Marty CLI** (`marty`) is the primary developer interface for ElevenID. It wraps every API operation into composable terminal commands with structured JSON output.
+This reference targets **Marty CLI v0.3.6**. Check `marty --version` and use
+`marty <command> --help` to inspect the binary you installed. The CLI covers
+selected public operations; the installed gateway's `/openapi.json` describes
+the broader API.
 
-## Usage
+## Usage and output
 
-```bash
-marty <command> [subcommand] [options]
+```sh
+marty --global-output json <command> <subcommand> [options]
 ```
 
-All commands support `--json` for structured output, making them suitable for scripting, CI/CD pipelines, and AI coding assistants.
+`--global-output` accepts `table`, `json`, or `json-compact` and applies to commands
+that render structured results. Many read commands also accept `--output` / `-o`.
+There is no universal `--json` flag. Informational messages and `--dry-run`
+previews can still be text; do not assume every command emits one JSON document.
 
-## Command reference
+| Command | Purpose |
+| --- | --- |
+| `marty init` | Interactive local configuration |
+| [`marty auth`](/cli/auth/) | Save or clear credentials; inspect saved authentication |
+| `marty api-keys` | List, create, and revoke organization machine keys |
+| `marty health` | Check gateway connectivity |
+| `marty orgs` | List, inspect, and select organizations |
+| [`marty verify`](/cli/verify/) | Start flows, read status, submit a presentation, or evaluate a policy |
+| [`marty credentials` / `creds`](/cli/credentials/) | Read issued records and use flow-associated credential operations |
+| `marty applications` / `apps` | Manage credential applications |
+| [`marty trust`](/cli/trust/) | Read and create trust profiles |
+| [`marty credential-templates` / `ct`](/cli/credential-templates/) | Read, create, and activate credential templates |
+| [`marty compliance`](/cli/compliance/) | Read and create compliance profiles |
+| `marty flows` | Manage supported flow operations |
+| `marty config show` / `set` | Read and change local configuration |
+| `marty completion <shell>` | Generate bash, zsh, or fish completions |
+| `marty test` | Run the CLI's selected test scenarios |
+| `marty license` | Manage license activation and status |
 
-| Command | Description |
-|---------|-------------|
-| [`marty init`](/cli/init/) | Initialize CLI configuration interactively |
-| [`marty auth`](/cli/auth/) | Authenticate with ElevenID (login, whoami) |
-| [`marty health`](/cli/health/) | Check API connectivity |
-| [`marty orgs`](/cli/orgs/) | List and switch organizations |
-| [`marty verify`](/cli/verify/) | Verify credentials (start, status, submit) |
-| [`marty creds`](/cli/credentials/) | Manage credentials (list, inspect, issue, revoke) |
-| [`marty trust`](/cli/trust/) | Manage trust profiles (list, inspect, create) |
-| [`marty ct`](/cli/credential-templates/) | Manage credential templates (list, inspect, create) |
-| [`marty compliance`](/cli/compliance/) | Manage compliance profiles (list, inspect, create) |
-| [`marty flows`](/cli/flows/) | List identity flows |
-| [`marty config`](/cli/config/) | View and set local configuration |
-| [`marty test`](/cli/test/) | Run end-to-end test scenarios |
-| [`marty completion`](/cli/completion/) | Generate shell completions (bash, zsh, fish) |
+## Configuration and automation
 
-## Global options
-
-| Option | Description |
-|--------|-------------|
-| `--json` | Output results as JSON |
-| `--help` | Show help for a command |
-| `--version` | Show CLI version |
-
-## For AI agents
-
-AI coding assistants (GitHub Copilot, Cursor, Windsurf) can run Marty CLI commands directly from the terminal. The `--json` flag ensures structured output that agents can parse reliably.
-
-```bash
-# Example: AI agent verifies a credential
-marty verify start --trust-profile eudi-pid --credential ./cred.json --json
+```sh
+marty config set apiUrl https://gateway.example.org
+marty orgs switch REPLACE_WITH_ORGANIZATION_UUID
+marty --global-output json ct list
 ```
+
+The origin has no `/api` or `/v1` suffix. `MARTY_API_URL`, `MARTY_ORG_ID`, and
+`MARTY_CONFIG_DIR` can override the corresponding runtime settings. Supply an
+organization API key through `MARTY_API_KEY` using your secret mechanism, or use
+`marty auth login` and choose its masked API-key prompt.
+
+For supported mutations, `--dry-run` prints the destination and payload without
+sending the request. It validates command syntax, not server acceptance. The
+[course example](/guides/ob3-course-integration/) provides a complete public
+OID4VCI offer and learner claim flow; `marty credentials issue` uses a different
+flow-associated endpoint.
+
+Sources: [v0.3.6 command definitions](https://github.com/ElevenID/marty-cli/blob/v0.3.6/crates/marty-cli/src/commands/mod.rs)
+and [configuration](https://github.com/ElevenID/marty-cli/blob/v0.3.6/crates/marty-cli/src/config.rs).

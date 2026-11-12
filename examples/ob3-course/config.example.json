@@ -1,0 +1,13 @@
+{
+  "origin": "https://REPLACE-gateway.example",
+  "authMode": "api-key",
+  "organizationId": "REPLACE-with-observed-organization-uuid",
+  "credentialTemplateId": "REPLACE-with-active-course-template-uuid",
+  "issuerDid": "did:web:REPLACE-gateway.example:orgs:canyon-skills-academy",
+  "achievementId": "https://canyon-skills.example/achievements/workplace-safety-foundations",
+  "learnerId": "synthetic-learner-a",
+  "completionEventId": "canyon-safety-learner-a-completion-001",
+  "subjectFile": "course-subject.example.json",
+  "stateDirectory": "private-run-001",
+  "timeoutMs": 30000
+}

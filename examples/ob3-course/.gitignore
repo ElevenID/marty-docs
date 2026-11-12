@@ -1,0 +1,8 @@
+private*/
+config.json
+onboarding-config.json
+*.pem
+*.jwt
+.schema-venv/
+ob3-achievementcredential-schema.json
+__pycache__/

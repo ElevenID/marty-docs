@@ -1,64 +1,48 @@
 ---
 title: marty verify
-description: Verify credentials using trust profiles and presentation policies.
+description: Start verification flows or evaluate credentials against a saved policy.
 sidebar:
-  order: 1
+  order: 5
 ---
 
-Verify the authenticity and validity of verifiable credentials against configured trust profiles.
+## Start and inspect an asynchronous flow
 
-## Commands
-
-### `marty verify start`
-
-Start a new credential verification session.
-
-```bash
-marty verify start [options]
+```sh
+marty --global-output json verify start --policy REPLACE_WITH_POLICY_UUID --dry-run
+marty --global-output json verify status REPLACE_WITH_SESSION_ID
+marty --global-output json verify sessions --limit 50
+marty --global-output json verify inspect REPLACE_WITH_SESSION_ID
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--trust-profile <id>` | Trust profile to verify against |
-| `--credential <path>` | Path to credential file (JSON) |
-| `--json` | Output result as JSON |
+`start` sends `presentation_policy_id`, the configured `organization_id`, and an
+optional `--trust-profile` to `/v1/flows/verify`. Remove `--dry-run` to create the
+intended flow. In automation, supply `--policy` explicitly; the interactive
+selection path is not appropriate for an unattended client. `status` reads
+`/v1/flows/instances/{id}`. Creating a session does not itself verify a credential.
 
-**Example:**
+`verify submit <session-id> --presentation '<JSON>'` sends the supplied JSON body
+to `/v1/flows/instances/{id}/submit`. Use the submission shape required by the
+selected flow and installed API. `--presentation` accepts literal JSON, not a
+file path. Add `--dry-run` to inspect a synthetic submission before sending it.
 
-```bash
-marty verify start \
-  --trust-profile eudi-pid \
-  --credential ./credential.json \
-  --json
+## Evaluate a saved policy directly
+
+```sh
+marty --global-output json verify evaluate \
+  --policy REPLACE_WITH_POLICY_UUID \
+  --credential REPLACE_WITH_ACTUAL_CREDENTIAL --dry-run
 ```
 
-**Response:**
+This targets `/v1/presentation-policies/{id}/evaluate`, sending the supplied
+credential as `vp_token`, with an optional `--trust-profile`. The returned value
+is the policy service's evaluation. The current command does not expose
+challenge/domain options; use the [VC-API](/api/verification/) when the
+presentation needs those explicit inputs.
 
-```json
-{
-  "verified": true,
-  "trustProfile": "eudi-pid",
-  "checks": [
-    { "name": "signature", "passed": true },
-    { "name": "expiration", "passed": true },
-    { "name": "revocation", "passed": true },
-    { "name": "issuer_trust", "passed": true }
-  ]
-}
-```
+`--credential` is a literal credential/token, not a filename. For private
+credentials, prefer an HTTP client that reads a private file rather than placing
+the value in process arguments. A direct saved-policy evaluation requires policy
+read/evaluate access; the VC-API adapter additionally checks permission to execute
+verification, as described in its API reference.
 
-### `marty verify status`
-
-Check the status of a verification session.
-
-```bash
-marty verify status <session-id> [--json]
-```
-
-### `marty verify submit`
-
-Submit a presentation to an existing verification session.
-
-```bash
-marty verify submit <session-id> [options]
-```
+Source: [CLI v0.3.6 verification commands](https://github.com/ElevenID/marty-cli/blob/v0.3.6/crates/marty-cli/src/commands/mod.rs).
