@@ -57,6 +57,27 @@ function checkTemplate(template, expected, bootstrapId) {
     'course_template_claim_mismatch', 'Course template claim definitions differ from the explicit setup.', { claim: wanted.name });
   }
 }
+function checkApiKeyExpiry(metadata, creationRequest, lifetimeHours, now = Date.now()) {
+  const timestamp = value => typeof value === 'string' && value.trim() ? Date.parse(value) : NaN;
+  const requestedAt = timestamp(creationRequest?.at);
+  const requestedExpiry = timestamp(creationRequest?.body?.expires_at);
+  const actualExpiry = timestamp(metadata?.expires_at);
+  c.need(Number.isInteger(lifetimeHours) && lifetimeHours >= 1 && lifetimeHours <= 168 &&
+    Number.isFinite(now) && Number.isFinite(requestedAt) && requestedAt <= now &&
+    creationRequest?.method === 'POST' && typeof creationRequest?.route === 'string' &&
+    creationRequest.route.split('?')[0] === '/v1/api-keys' &&
+    Number.isFinite(requestedExpiry) && requestedExpiry > requestedAt &&
+    requestedExpiry - requestedAt <= lifetimeHours * 3600000,
+  'client_key_expiry_unproven', 'The retained API-key creation journal must prove the configured bounded lifetime.');
+  c.need(Number.isFinite(actualExpiry) && actualExpiry > now && actualExpiry <= requestedExpiry,
+    'client_key_expiry_mismatch', 'Client key must have a finite future expiry no later than its retained creation request.');
+}
+function retainedApiKeyRequest() {
+  const journal = file('api-key-create-requested.json');
+  c.need(fs.existsSync(journal), 'client_key_expiry_unproven',
+    'The original API-key creation journal is required to verify the retained key lifetime.');
+  return c.readJson(journal);
+}
 function prepareConfig(configPath) {
   const cfg = c.config(configPath);
   cfg.expectedOrganizationDisplayName = cfg.expectedOrganizationDisplayName || 'Canyon Skills Academy';
@@ -185,9 +206,9 @@ async function execute(command, configPath) {
       const metadata = c.readJson(file('client-api-key-metadata.json'));
       c.need(metadata.id === namedKeys[0].id && namedKeys[0].organization_id === org.id && namedKeys[0].enabled === true &&
         Array.isArray(namedKeys[0].scopes) && namedKeys[0].scopes.length === SCOPES.length &&
-        SCOPES.every(scope => namedKeys[0].scopes.includes(scope)) &&
-        (!namedKeys[0].expires_at || Date.parse(namedKeys[0].expires_at) > Date.now()),
+        SCOPES.every(scope => namedKeys[0].scopes.includes(scope)),
       'client_key_metadata_mismatch', 'Existing client key differs from the retained identity, scope or lifetime.');
+      checkApiKeyExpiry(namedKeys[0], retainedApiKeyRequest(), cfg.apiKeyExpiresHours);
     }
     for (const [label, resultObserved] of [
       ['issuer-create', matching(identities).length === 1],
@@ -255,9 +276,9 @@ async function execute(command, configPath) {
   }
   c.need(keyMetadata.organization_id === org.id && keyMetadata.enabled === true &&
     Array.isArray(keyMetadata.scopes) && keyMetadata.scopes.length === SCOPES.length &&
-    SCOPES.every(scope => keyMetadata.scopes.includes(scope)) &&
-    (!keyMetadata.expires_at || Date.parse(keyMetadata.expires_at) > Date.now()),
+    SCOPES.every(scope => keyMetadata.scopes.includes(scope)),
   'client_key_metadata_mismatch', 'Client key metadata must match organization, explicit scopes, active state and expiry.');
+  checkApiKeyExpiry(keyMetadata, retainedApiKeyRequest(), cfg.apiKeyExpiresHours);
   event('scoped-client-key-retained', { apiKeyId: keyMetadata.id });
 
   const clientConfig = { origin: cfg.origin, authMode: 'api-key', organizationId: org.id,
@@ -288,4 +309,4 @@ if (require.main === module) main().catch(error => {
   }
   process.stdout.write(JSON.stringify(result) + '\n'); process.exitCode = 1;
 });
-module.exports = { active, badge, vcJwt, expectedTemplate, checkTemplate, makeSubject, execute };
+module.exports = { active, badge, vcJwt, expectedTemplate, checkTemplate, checkApiKeyExpiry, makeSubject, execute };
