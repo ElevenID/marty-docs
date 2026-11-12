@@ -1,6 +1,7 @@
 private*/
 config.json
 onboarding-config.json
+retry-config.json
 *.pem
 *.jwt
 .schema-venv/

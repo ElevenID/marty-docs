@@ -209,6 +209,13 @@ refuses a second attempt in the same directory. If a response is lost, preserve
 the directory and reconcile the server's actual transaction. Do not delete the
 journal and reissue simply to get past a failure.
 
+For explicit qualification of an already successful issuance, use the separate
+[controlled retry probe](./RETRY-QUALIFICATION.md). It preserves the original
+event and request bytes, records warm-cache replay and conflict behavior, then
+uses a distinct same-organization key to test durable recovery through an
+unused gateway namespace. It does not enable automatic retries in this client.
+The same page gives the public verification-scope and lifecycle test sequence.
+
 The state directory is mode `0700`; keys, offers, responses and credentials are
 mode `0600`. It contains sensitive pre-authorized codes, tokens, wallet key and
 credentials. Keep it private. The console emits bounded, redacted diagnostics;
@@ -225,7 +232,7 @@ Run the local boundary checks without a deployment:
 
 ```sh
 node ob3-client.cjs offline-check
-node --test client.test.cjs
+node --test client.test.cjs probe-retries.test.cjs
 ```
 
 These cover local signatures and tampering, signed identifiers, criteria shape,
