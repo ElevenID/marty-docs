@@ -7,7 +7,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "version": "0.1.0",
-  "description": "ElevenID developer documentation — guides, CLI reference, and API docs",
+  "description": "ElevenID developer documentation \u2014 guides, CLI reference, and API docs",
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
@@ -16,9 +16,9 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.41.8",
-    "astro": "^7.2.6",
-    "sharp": "^0.35.3"
+    "@astrojs/starlight": "^0.42.8",
+    "astro": "^7.4.5",
+    "sharp": "^0.35.4"
   },
   "overrides": {
     "postcss-nested": "7.0.2"
