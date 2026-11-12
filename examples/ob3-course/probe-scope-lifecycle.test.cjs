@@ -66,15 +66,19 @@ function fixture(t) {
     compliance_profile_id: '10000000-0000-0000-0000-000000000003',
     claims: [{ name: 'learner_id', type: 'STRING', required: true, selectively_disclosable: false },
       { name: 'achievement', type: 'OBJECT', required: true, selectively_disclosable: false }] };
-  const policy = { id: ID.policy, organization_id: ID.org, status: 'active', compliance_profile_id: template.compliance_profile_id,
+  // Public native contracts at UI 44864dcf: policy_contract::validate_policy rejects
+  // non-null compliance_profile_id; http_service::policy_response removes nulls.
+  // trust-profile::profile_response and gateway::project_trust_profile use lowercase status.
+  // These are modeled public responses; this fake transport does not execute Rust validators.
+  const policy = { id: ID.policy, organization_id: ID.org, status: 'active',
     accepted_credential_types: ['OpenBadgeCredential'], required_claims: [], alternative_requirements: [],
-    holder_binding: { required: false }, freshness: { max_age_seconds: null, require_not_revoked: true, revocation_grace_seconds: 300 },
+    holder_binding: { required: false }, freshness: { require_not_revoked: true, revocation_grace_seconds: 300 },
     prefer_predicates: false, supported_circuits: [], trust_profile_id: ID.trust,
     credential_requirements: [{ credential_template_id: ID.template, credential_payload_format: 'VC_JWT', required: true,
-      trust_profile_id: ID.trust, max_age_seconds: null, require_fresh_issuance: false,
+      trust_profile_id: ID.trust, require_fresh_issuance: false,
       requested_claims: ['learner_id', 'achievement'].map(name => ({ claim_name: name, required: true, selective_disclosure: false,
         accept_derived: false, constraints: [{ claim_name: name, constraint_type: 'equals', value: subject[name] }] })) }] };
-  const trust = { id: ID.trust, organization_id: ID.org, profile_type: 'CUSTOM', status: 'ACTIVE', allowed_algorithms: ['ES256'],
+  const trust = { id: ID.trust, organization_id: ID.org, profile_type: 'CUSTOM', status: 'active', allowed_algorithms: ['ES256'],
     supported_formats: ['VC_JWT'], allowed_issuers: [issuer], denied_issuers: [], trust_sources: [] };
   const record = { id: ID.credential, credential_id: ID.credential, organization_id: ID.org, credential_template_id: ID.template,
     issuer_did: issuer, subject_id: learner, credential_hash: c.hash(jwt), flow_execution_id: ID.transaction,
@@ -173,6 +177,45 @@ test('fresh exact key grants and unambiguous identity are required before lifecy
     else if (scenario === 'already-used') f.rows[1].last_used_at = '2026-11-12T09:59:00Z';
     else f[scenario] = true;
     await assert.rejects(f.run(), { code: scenario === 'extra-scope' ? 'key_grants_mismatch' : scenario === 'already-used' ? 'keys_already_used' : 'key_usage_ambiguous' });
+    assert.deepEqual(f.lifecycle, []);
+  });
+});
+
+test('native policy omits unresolved compliance while the template retains its OB3 profile', async t => {
+  for (const variant of ['omitted', 'null']) await t.test(variant, async t => {
+    const f = fixture(t);
+    if (variant === 'null') f.policy.compliance_profile_id = null;
+    const report = await f.run();
+    assert.equal(report.state, 'passed');
+    assert.equal(f.template.compliance_profile_id, '10000000-0000-0000-0000-000000000003');
+    assert.equal(f.trust.status, 'active');
+  });
+});
+
+test('unavailable policy compliance selection is refused before verification or lifecycle POSTs', async t => {
+  const f = fixture(t);
+  // Mirrors the native creation_rejects_unresolved_compliance_and_unsupported_predicate_capabilities case.
+  f.policy.compliance_profile_id = f.template.compliance_profile_id;
+  await assert.rejects(f.run(), { code: 'policy_compliance_unsupported' });
+  assert.equal(f.posts.length, 0);
+  assert.deepEqual(f.lifecycle, []);
+  assert.equal(f.record.status, 'ACTIVE');
+});
+
+test('public trust status is exactly lowercase active before any POST', async t => {
+  for (const status of ['ACTIVE', 'draft', 'suspended', 'archived']) await t.test(status, async t => {
+    const f = fixture(t); f.trust.status = status;
+    await assert.rejects(f.run(), { code: 'trust_profile_mismatch' });
+    assert.equal(f.posts.length, 0);
+    assert.deepEqual(f.lifecycle, []);
+  });
+});
+
+test('omitting policy compliance never permits a missing or different OB3 template profile', async t => {
+  for (const value of [undefined, null, ID.trust]) await t.test(String(value), async t => {
+    const f = fixture(t); f.template.compliance_profile_id = value;
+    await assert.rejects(f.run(), { code: 'course_template_mismatch' });
+    assert.equal(f.posts.length, 0);
     assert.deepEqual(f.lifecycle, []);
   });
 });

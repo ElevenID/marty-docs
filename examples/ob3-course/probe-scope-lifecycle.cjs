@@ -110,8 +110,12 @@ function validateResources(input, template, policy, trust) {
       claim.name === name && claim.type === type && claim.required === true && claim.selectively_disclosable === false)),
   'course_template_mismatch', 'The observed active template must be this issuer’s OB3 VC-JWT course.');
   const requirements = policy?.credential_requirements;
+  // The native policy owner rejects every unresolved ComplianceProfile selector.
+  // The template's OB3 profile is checked above; it is not policy evaluation evidence.
+  c.need(none(policy?.compliance_profile_id), 'policy_compliance_unsupported',
+    'The saved policy must omit compliance_profile_id: resolved ComplianceProfile evaluation is unavailable.');
   c.need(policy?.id === cfg.policyId && policy.organization_id === client.organizationId && policy.status === 'active' &&
-    policy.compliance_profile_id === template.compliance_profile_id && equal(policy.accepted_credential_types, ['OpenBadgeCredential']) &&
+    equal(policy.accepted_credential_types, ['OpenBadgeCredential']) &&
     empty(policy.required_claims) && Array.isArray(requirements) && requirements.length === 1 && empty(policy.alternative_requirements) &&
     policy.holder_binding?.required === false && policy.freshness?.require_not_revoked === true && none(policy.freshness.max_age_seconds) &&
     Number.isInteger(policy.freshness.revocation_grace_seconds) && policy.freshness.revocation_grace_seconds >= 0 && policy.freshness.revocation_grace_seconds <= 300 &&
@@ -133,7 +137,7 @@ function validateResources(input, template, policy, trust) {
     'policy_claims_mismatch', 'Each required claim must use one exact equality constraint over the retained course value.');
   }
   c.need(trust?.id === policy.trust_profile_id && trust.organization_id === client.organizationId && trust.profile_type === 'CUSTOM' &&
-    trust.status === 'ACTIVE' && equal(trust.allowed_algorithms, ['ES256']) && equal(trust.supported_formats, ['VC_JWT']) &&
+    trust.status === 'active' && equal(trust.allowed_algorithms, ['ES256']) && equal(trust.supported_formats, ['VC_JWT']) &&
     equal(trust.allowed_issuers, [client.issuerDid]) && empty(trust.denied_issuers) && empty(trust.trust_sources),
   'trust_profile_mismatch', 'The active owned CUSTOM trust profile must allow exactly this ES256 VC-JWT issuer without additional trust sources.');
   return { template: c.hash(JSON.stringify(template)), policy: c.hash(JSON.stringify(policy)), trust: c.hash(JSON.stringify(trust)) };
