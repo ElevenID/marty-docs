@@ -229,6 +229,18 @@ credentials. Keep it private. The console emits bounded, redacted diagnostics;
 share a reviewed `report.json`, not the entire state directory. No real learner
 identity or email is needed for this synthetic scenario.
 
+Rejected HTTP responses retain the local step `code`, numeric `httpStatus`, a
+conservative `serverErrorCode` when supplied, and a sanitized `diagnostic` of at
+most 500 characters. The client accepts the protocol's `error_description` as
+well as the gateway's nested error message; it never serializes arbitrary error
+objects or raw response bodies into the console/report diagnostic. Known
+secrets, API keys, compact JWTs, private-key PEMs and offer query values are
+redacted before truncation. Preflight, issuance, token and credential requests
+retain the complete response in their existing private response files. These
+fields describe the server's response; they do
+not establish whether a credential was signed or persisted, and do not enable
+automatic retries.
+
 Use private filesystem ACLs on Windows; Unix mode checks cannot establish those
 ACLs. Keep generated state under the default ignored `private-*` directories or
 outside the repository. Do not commit local configuration or live artifacts.
@@ -244,7 +256,8 @@ node --test client.test.cjs probe-retries.test.cjs probe-scope-lifecycle.test.cj
 
 These cover local signatures and tampering, signed identifiers, criteria shape,
 issuer/learner/course mismatches, dates, offer limitations, and operator form and
-cookie boundaries. They do not replace a live installation or claim test.
+cookie boundaries, plus protocol/gateway diagnostics, redaction and one-attempt
+error handling. They do not replace a live installation or claim test.
 
 Adapted from these exact primary code sources at
 `b7c7055830722d10512ccac042b1e0abe0e1ecec`:
