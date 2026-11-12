@@ -36,6 +36,7 @@ function sanitize(input) {
   for (const secret of secrets) if (secret) s = s.split(secret).join('[redacted]');
   return s.replace(/(?:mk|pk)_(?:test|live)_[A-Za-z0-9_-]+/g, '[api-key]')
     .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[jwt]')
+    .replace(/-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z]+ )*PRIVATE KEY-----|$)/g, '[private-key]')
     .replace(/([?&](?:code|state|credential_offer|credential_offer_uri)=)[^&\s]+/gi, '$1[redacted]')
     .slice(0, 500);
 }
@@ -150,12 +151,23 @@ async function request(cfg, url, opts = {}) {
     throw new Stop('transport_failed', 'Request failed; no automatic retry was attempted.', { transportCode: sanitize(code), mutationOutcome: opts.method && opts.method !== 'GET' ? 'unknown' : 'read-only' });
   } finally { clearTimeout(timer); }
 }
+function responseDiagnostic(response) {
+  const body = response.json && typeof response.json === 'object' && !Array.isArray(response.json) ? response.json : {};
+  const nested = body.error && typeof body.error === 'object' && !Array.isArray(body.error) ? body.error : {};
+  // Admit text fields only. Never stringify a raw response, credential, or
+  // arbitrary nested object to produce a public diagnostic.
+  const message = [nested.message, body.error_description, nested.code, body.detail, body.message, body.error].find(nonempty);
+  const code = [nested.code, body.error].find(value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_.:-]{0,89}$/.test(value));
+  const safeCode = code === undefined ? undefined : sanitize(code);
+  return {
+    httpStatus: Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : null,
+    diagnostic: sanitize(message || (response.json == null ? 'non-JSON response' : 'No textual error diagnostic was returned.')),
+    ...(safeCode === code && code !== undefined ? { serverErrorCode: safeCode } : {}),
+    correlationId: typeof response.correlationId === 'string' ? sanitize(response.correlationId) : '',
+  };
+}
 function requireJson(response, code) {
-  need(response.status >= 200 && response.status < 300, code, 'Public endpoint rejected the request.', {
-    httpStatus: response.status,
-    diagnostic: sanitize(response.json?.error?.message || response.json?.error?.code || response.json?.detail || response.json?.message || response.json?.error || 'non-JSON response'),
-    correlationId: sanitize(response.correlationId),
-  });
+  need(response.status >= 200 && response.status < 300, code, 'Public endpoint rejected the request.', responseDiagnostic(response));
   need(response.json && typeof response.json === 'object', 'json_response_required', 'Endpoint did not return JSON.');
   return response.json;
 }
@@ -194,8 +206,8 @@ async function preflight(cfg) {
     if (name !== `${cfg.authMode}-template-read`) {
       event(name, denied ? 'passed' : 'failed', { httpStatus: response.status, expectation: '401-or-403' });
     } else {
-      event(name, response.status === 200 ? 'passed' : 'failed', { httpStatus: response.status,
-        diagnostic: sanitize(response.json?.error?.message || response.json?.message || response.json?.detail || response.json?.error || '') });
+      event(name, response.status === 200 ? 'passed' : 'failed', response.status === 200
+        ? { httpStatus: response.status, diagnostic: '' } : responseDiagnostic(response));
       if (response.status === 200) {
         const template = requireJson(response, 'template_read_failed');
         need(template.organization_id === cfg.organizationId && template.issuer_did === cfg.issuerDid && template.vct === cfg.achievementId,
@@ -509,4 +521,4 @@ if (require.main === module) main().catch(error => {
   process.exitCode = 1;
 });
 
-module.exports = { parseOffer, didWebUrl, holderProof, verifySignature, validateBindings, decodeCompact };
+module.exports = { parseOffer, didWebUrl, holderProof, verifySignature, validateBindings, decodeCompact, responseDiagnostic, requireJson };
