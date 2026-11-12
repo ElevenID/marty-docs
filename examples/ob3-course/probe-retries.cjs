@@ -13,6 +13,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const equal = (a, b) => isDeepStrictEqual(a, b);
 
+function parseRecord(raw, label) {
+  let value;
+  try { value = JSON.parse(raw); } catch {
+    throw new c.Stop('private_record_invalid', 'Retained private JSON is malformed: ' + label + '.');
+  }
+  c.need(object(value), 'private_record_invalid', 'Retained private JSON must be an object: ' + label + '.');
+  return value;
+}
+function configuration(filename) {
+  try { return c.config(filename); } catch (error) {
+    if (error instanceof SyntaxError) throw new c.Stop('configuration_invalid', 'Probe or original client configuration contains malformed JSON.');
+    throw error;
+  }
+}
 function existingDirectory(directory) {
   c.need(fs.existsSync(directory), 'original_state_missing', 'The original successful issuance directory must already exist.');
   return c.privateDir(directory);
@@ -43,10 +57,10 @@ function validateSelectedKey(item, organizationId, now) {
 }
 function loadInputs(configFile) {
   c.need(c.nonempty(configFile), 'configuration_required', 'Supply a retry-probe configuration file.');
-  const cfg = c.config(configFile);
+  const cfg = configuration(configFile);
   for (const field of ['clientConfigFile', 'primaryKeyFile', 'secondaryKeyFile', 'operatorSessionFile', 'probeStateDirectory'])
     c.need(c.nonempty(cfg[field]), 'configuration_required', 'Configure all client, key, session and evidence file locations.', { field });
-  const client = c.config(c.resolveFile(cfg, cfg.clientConfigFile));
+  const client = configuration(c.resolveFile(cfg, cfg.clientConfigFile));
   c.need(cfg.origin === client.origin && client.authMode === 'api-key' && UUID.test(client.organizationId) &&
     UUID.test(cfg.primaryKeyId) && UUID.test(cfg.secondaryKeyId) && cfg.primaryKeyId !== cfg.secondaryKeyId,
   'probe_binding_invalid', 'Configure the original API-key client and two distinct key UUIDs on its HTTPS origin.');
@@ -58,7 +72,7 @@ function loadInputs(configFile) {
   const read = filename => {
     const raw = c.readPrivate(path.join(original, filename));
     inputs[filename] = c.hash(raw);
-    return JSON.parse(raw);
+    return parseRecord(raw, filename);
   };
   const journal = read('issuance-requested.json');
   const initial = read('issuance-response.json');
@@ -112,7 +126,7 @@ async function runPhase(phase, configFile, { request = c.request, now = Date.now
     automaticMutationReplay: false, offerRedeemed: false, nativeMaintenanceVerified: false, checks: [] };
   let warm;
   if (phase === 'durable') {
-    warm = c.readJson(file('warm-report.json'));
+    warm = parseRecord(c.readPrivate(file('warm-report.json')), 'warm-report.json');
     c.need(warm.state === 'passed' && warm.inputBinding === input.binding && warm.phase === 'warm',
       'warm_evidence_required', 'The same original inputs and a completed warm phase are required.');
     c.need(c.nonempty(cfg.maintenanceReceiptFile), 'maintenance_receipt_required', 'Retain the supported native pause/resume receipt before the durable phase.');

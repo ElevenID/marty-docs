@@ -179,6 +179,33 @@ test('unknown original outcomes or modified captured bytes cannot initiate a pro
   }
 });
 
+test('malformed private JSON cannot expose parser excerpts before secrets are known', async t => {
+  for (const filename of ['original/issuance-requested.json', 'original/issuance-response.json', 'original/offer-private.json', 'client.json']) {
+    await t.test(filename, async t => {
+      const f = fixture(t);
+      const sentinel = 'PRIVATE_CAPABILITY_CLAIM_SENTINEL_NEVER_LOG';
+      f.save(filename, '{"private":"' + sentinel + '" BAD_TRAILING_DATA}');
+      await assert.rejects(f.run('warm'), error => {
+        assert.equal(error.code, filename === 'client.json' ? 'configuration_invalid' : 'private_record_invalid');
+        assert.ok(!JSON.stringify(c.failure(error, 'retry-probe')).includes(sentinel));
+        assert.ok(!error.message.includes('BAD_TRAILING_DATA'));
+        return true;
+      });
+      assert.equal(f.requests.length, 0);
+    });
+  }
+  const f = fixture(t);
+  await f.run('warm'); f.pauseReceipt();
+  f.save('probe/warm-report.json', '{"private":"PRIVATE_REPORT_SENTINEL" BAD_TRAILING_DATA}');
+  const count = f.requests.length;
+  await assert.rejects(f.run('durable'), error => {
+    assert.equal(error.code, 'private_record_invalid');
+    assert.ok(!JSON.stringify(c.failure(error, 'retry-probe')).includes('PRIVATE_REPORT_SENTINEL'));
+    return true;
+  });
+  assert.equal(f.requests.length, count);
+});
+
 test('durable phase requires successful warm evidence, receipt, unchanged inputs and unused B between phases', async t => {
   for (const kind of ['no-warm', 'no-receipt', 'changed-input', 'used-b']) {
     await t.test(kind, async t => {
