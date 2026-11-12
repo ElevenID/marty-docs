@@ -2,6 +2,7 @@ private*/
 config.json
 onboarding-config.json
 retry-config.json
+scope-lifecycle-config.json
 *.pem
 *.jwt
 .schema-venv/
