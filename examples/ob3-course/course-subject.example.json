@@ -1,0 +1,13 @@
+{
+  "type": ["AchievementSubject"],
+  "learner_id": "synthetic-learner-a",
+  "achievement": {
+    "id": "https://canyon-skills.example/achievements/workplace-safety-foundations",
+    "type": ["Achievement"],
+    "name": "Workplace Safety Foundations",
+    "description": "Completed Canyon Skills Academy's synthetic workplace safety workshop and assessment.",
+    "criteria": {
+      "narrative": "Complete the workshop and score at least 80 percent on the practical assessment."
+    }
+  }
+}

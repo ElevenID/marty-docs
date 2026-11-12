@@ -16,46 +16,35 @@ A **trust profile** defines the rules for verifying credentials within a specifi
 | **Trusted issuers** | Which DIDs or organizations are authorized to issue specific credential types |
 | **Policies** | Verification policies: minimum disclosure, holder binding, revocation checking |
 
-## Example
+## Trust configuration and policy evaluation
 
-```json
-{
-  "id": "trust-profile-eudi-pid",
-  "name": "EUDI PID Verification",
-  "version": "1.0.0",
-  "trustFramework": "eIDAS2",
-  "acceptedFormats": ["sd-jwt", "mdoc"],
-  "trustedIssuers": [
-    {
-      "did": "did:web:gov.example",
-      "credentialTypes": ["PersonIdentificationData"]
-    }
-  ],
-  "policies": {
-    "minimumDisclosure": true,
-    "holderBinding": "required",
-    "revocationCheck": "mandatory"
-  }
-}
-```
+A trust profile and a presentation policy have distinct roles. Select an active,
+organization-owned trust profile with the supported algorithms and formats;
+configure a presentation policy for the credential requirements and claims your
+application needs. Use the installed API's snake_case contract when creating
+these resources. The policy evaluator combines authenticated credential facts
+with the selected trust and policy configuration.
 
-## How trust profiles are used
+For the synchronous VC-API route, the caller supplies an organization ID and
+saved presentation-policy ID. A machine client needs both verification execution
+and policy read/evaluate authority. The [verification API](/api/verification/)
+describes those scopes and the actual verdict shape.
 
-1. A verifier selects a trust profile for a verification session
-2. When a credential is presented, ElevenID evaluates it against the profile's rules
-3. Each check (signature, expiration, revocation, issuer trust) runs against the profile's policies
-4. The result indicates which checks passed or failed
+A profile name such as an education or regulatory framework is configuration
+metadata. It does not establish certification or legal compliance by itself.
 
 ## CLI usage
 
 ```bash
-marty trust list --json
-marty trust inspect <profile-id> --json
-marty trust create --json
+marty --global-output json trust list
+marty --global-output json trust inspect <profile-id>
+marty trust create --help
 ```
 
 ## Related
 
 - [Credential Templates](/concepts/credential-templates/)
 - [Marty Identity Protocol](/concepts/marty-protocol/)
-- [Trust Registry API](/api/trust-registry/)
+- [Trust Profile API](/api/trust-registry/)
+
+Source: [policy authorization and evaluation](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/presentation-policy/src/application.rs).
