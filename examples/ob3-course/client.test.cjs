@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { validateBindings, parseOffer } = require('./ob3-client.cjs');
 const { CookieJar, loginForm } = require('./public-login.cjs');
+const { checkApiKeyExpiry } = require('./onboard-course.cjs');
 
 const now = Date.parse('2026-11-12T12:00:00Z');
 const cfg = {
@@ -108,4 +109,49 @@ test('operator cookie paths do not leak realm cookies to the application callbac
   assert.equal(jar.header(new URL(origin + '/realms/11id/login-actions/authenticate')), 'realm=synthetic');
   assert.equal(jar.header(new URL(origin + '/realms/11id-other/login')), '');
   assert.equal(jar.header(new URL(origin + '/v1/auth/callback')), '');
+});
+
+function keyCreationRequest(at = now - 60000, expires = now + 3540000) {
+  return { at: new Date(at).toISOString(), method: 'POST', route: '/v1/api-keys?organization_id=synthetic',
+    body: { expires_at: new Date(expires).toISOString() } };
+}
+
+test('accepts a finite future key expiry within the original configured request', () => {
+  const journal = keyCreationRequest();
+  assert.doesNotThrow(() => checkApiKeyExpiry({ expires_at: journal.body.expires_at }, journal, 1, now));
+  assert.doesNotThrow(() => checkApiKeyExpiry({ expires_at: new Date(now + 60000).toISOString() }, journal, 1, now));
+});
+
+test('rejects missing, malformed, expired and overlong returned key expiry', () => {
+  const journal = keyCreationRequest();
+  for (const expires_at of [undefined, null, '', 'not-a-date', now + 60000,
+    new Date(now - 1).toISOString(), new Date(now).toISOString(),
+    new Date(Date.parse(journal.body.expires_at) + 1).toISOString()]) {
+    assert.throws(() => checkApiKeyExpiry({ expires_at }, journal, 1, now),
+      { code: 'client_key_expiry_mismatch' });
+  }
+});
+
+test('requires an intact bounded API-key creation journal', () => {
+  const journal = keyCreationRequest();
+  const metadata = { expires_at: journal.body.expires_at };
+  const invalid = [null, {}, { ...journal, at: 'not-a-date' },
+    { ...journal, at: new Date(now + 1).toISOString() },
+    { ...journal, method: 'GET' }, { ...journal, route: '/v1/issuance' }, { ...journal, route: 123 },
+    { ...journal, body: {} },
+    { ...journal, body: { expires_at: journal.at } },
+    { ...journal, body: { expires_at: new Date(Date.parse(journal.body.expires_at) + 1).toISOString() } }];
+  for (const value of invalid) assert.throws(() => checkApiKeyExpiry(metadata, value, 1, now),
+    { code: 'client_key_expiry_unproven' });
+  for (const lifetime of [0, 169, 1.5]) assert.throws(() => checkApiKeyExpiry(metadata, journal, lifetime, now),
+    { code: 'client_key_expiry_unproven' });
+});
+
+test('resumed key readback retains the original deadline instead of restarting its lifetime', () => {
+  const journal = keyCreationRequest(now - 1800000, now + 1800000);
+  assert.doesNotThrow(() => checkApiKeyExpiry({ expires_at: journal.body.expires_at }, journal, 1, now));
+  assert.throws(() => checkApiKeyExpiry({ expires_at: new Date(now + 3600000).toISOString() }, journal, 1, now),
+    { code: 'client_key_expiry_mismatch' });
+  assert.throws(() => checkApiKeyExpiry({ expires_at: journal.body.expires_at }, journal, 1, now + 1800000),
+    { code: 'client_key_expiry_mismatch' });
 });
