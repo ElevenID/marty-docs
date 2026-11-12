@@ -36,7 +36,7 @@ require `--doctype`. For the course integration, explicitly select `VC_JWT`,
 
 The CLI create command does not expose every public template field, including
 `revocation_profile_id`. The [course setup helper](/guides/ob3-course-integration/)
-uses the public API to bind all the observed customer-owned profiles and checks
+uses the public API to bind the selected compliance, trust, and revocation profiles and checks
 that the resulting template is active before issuance.
 
 Sources: [released template commands](https://github.com/ElevenID/marty-cli/blob/v0.3.6/crates/marty-cli/src/commands/mod.rs)

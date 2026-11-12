@@ -18,7 +18,8 @@ snake_case field names when creating or reading templates.
 | `issuer_did` | The intended active managed issuer identity |
 | `vct` | Course achievement identifier, matched to `achievement.id` |
 | `claims` | Required `learner_id` string and `achievement` object |
-| `compliance_profile_id`, `trust_profile_id`, `revocation_profile_id` | Customer-owned profile references |
+| `compliance_profile_id` | Selected compliance profile; the baseline uses a system profile |
+| `trust_profile_id`, `revocation_profile_id` | Active customer-owned trust and revocation profiles |
 | `status` | Must be active for the intended issuance workflow |
 
 Open Badges is the achievement credential model; the payload format and exchange

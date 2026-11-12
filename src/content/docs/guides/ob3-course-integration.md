@@ -72,7 +72,7 @@ a separate course template and an expiring client key. Its decisions are explici
 | Payload and issuance | `VC_JWT` and `OID4VCI_PRE_AUTH` |
 | Course identifier | Template `vct` equals the subject's `achievement.id` |
 | Issuer selection | Active organization-owned DID + `vc_jwt_issuer` purpose + `VC_JWT` + `ES256` |
-| Profiles | Existing customer-owned compliance, active trust, and active revocation profiles |
+| Profiles | Selected compliance profile, plus active customer-owned trust and revocation profiles |
 | Claims | Required `learner_id` string and `achievement` object |
 | Client key | Explicit `templates:read`, `credentials:issue`, `credentials:read`; bounded expiry |
 

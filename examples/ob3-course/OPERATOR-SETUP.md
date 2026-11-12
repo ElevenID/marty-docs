@@ -147,7 +147,10 @@ external-form refusal, cookie path restrictions, zero-mutation inspection,
 journaled provisioning and repeat provisioning without new mutations. It is
 not a live deployment test or proof that the installation is healthy.
 
-Source: ElevenID/marty-ui at b7c7055830722d10512ccac042b1e0abe0e1ecec.
-Reviewed authApi.js, auth HTTP/HTTP-kernel/OIDC source, Keycloak login.ftl and
-login-username.ftl, credential-template/persistence.rs and the public setup
-sources listed in operator-onboarding.json.
+Sources at ElevenID/marty-ui `b7c7055830722d10512ccac042b1e0abe0e1ecec`:
+
+- [Public authentication routes](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/auth/src/http_service.rs)
+- [Authorization Code and PKCE flow](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/auth/src/oidc.rs)
+- [Public template contract](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/gateway/src/credential_template_contract.rs)
+- [Template persistence and type validation](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/credential-template/src/persistence.rs)
+- [Organization API-key lifecycle](https://github.com/ElevenID/marty-ui/blob/b7c7055830722d10512ccac042b1e0abe0e1ecec/rust/services/organization/src/api_keys.rs)
